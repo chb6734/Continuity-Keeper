@@ -9,20 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileText, ArrowRight, Shield, Clock, Smartphone } from "lucide-react";
 import type { Hospital } from "@shared/schema";
 
-function getDeviceId(): string {
-  const DEVICE_ID_KEY = "medbridge_device_id";
-  let deviceId = localStorage.getItem(DEVICE_ID_KEY);
-  if (!deviceId) {
-    deviceId = crypto.randomUUID();
-    localStorage.setItem(DEVICE_ID_KEY, deviceId);
-  }
-  return deviceId;
-}
-
 export default function Home() {
   const [, navigate] = useLocation();
   const [selectedHospital, setSelectedHospital] = useState<Hospital | null>(null);
-  const [deviceId] = useState(() => getDeviceId());
 
   const { data: hospitals = [], isLoading } = useQuery<Hospital[]>({
     queryKey: ["/api/hospitals"],
@@ -118,7 +107,7 @@ export default function Home() {
           </Button>
         </div>
 
-        <MedicationHistoryCard deviceId={deviceId} />
+        <MedicationHistoryCard />
       </main>
     </div>
   );

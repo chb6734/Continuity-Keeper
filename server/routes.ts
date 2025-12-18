@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import { storage, seedHospitals } from "./storage";
 import { extractMedicationsFromImage, detectConflicts } from "./gemini";
 import { insertIntakeSchema, insertPrescriptionSchema } from "@shared/schema";
+import { setupAuth, isAuthenticated } from "./replitAuth";
 
 const upload = multer({ 
   storage: multer.memoryStorage(),
@@ -16,6 +17,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
+  await setupAuth(app);
   await seedHospitals();
 
   // ==================== 병원 API ====================
@@ -30,44 +32,25 @@ export async function registerRoutes(
   });
 
   // ==================== 환자 API ====================
-  app.post("/api/patients", async (req: Request, res: Response) => {
+  app.get("/api/patient", isAuthenticated, async (req: any, res: Response) => {
     try {
-      const { deviceId } = req.body;
-      if (!deviceId) {
-        return res.status(400).json({ error: "deviceId is required" });
-      }
-      const patient = await storage.getOrCreatePatient(deviceId);
+      const userId = req.user.claims.sub;
+      const patient = await storage.getOrCreatePatient(userId);
       res.json(patient);
     } catch (error) {
-      console.error("Failed to create patient:", error);
-      res.status(500).json({ error: "Failed to create patient" });
-    }
-  });
-
-  app.get("/api/patients/:deviceId", async (req: Request, res: Response) => {
-    try {
-      const patient = await storage.getPatientByDeviceId(req.params.deviceId);
-      if (!patient) {
-        return res.status(404).json({ error: "Patient not found" });
-      }
-      res.json(patient);
-    } catch (error) {
-      console.error("Failed to get patient:", error);
-      res.status(500).json({ error: "Failed to get patient" });
+      console.error("Failed to get/create patient:", error);
+      res.status(500).json({ error: "Failed to get/create patient" });
     }
   });
 
   // ==================== 처방 기록 API (별도 저장) ====================
-  app.post("/api/prescriptions/import", upload.array("documents", 5), async (req: Request, res: Response) => {
+  app.post("/api/prescriptions/import", isAuthenticated, upload.array("documents", 5), async (req: any, res: Response) => {
     try {
       const files = req.files as Express.Multer.File[] || [];
-      const { deviceId, chiefComplaint, hospitalName } = req.body;
+      const { chiefComplaint, hospitalName } = req.body;
+      const userId = req.user.claims.sub;
 
-      if (!deviceId) {
-        return res.status(400).json({ error: "deviceId is required" });
-      }
-
-      const patient = await storage.getOrCreatePatient(deviceId);
+      const patient = await storage.getOrCreatePatient(userId);
       const results: any[] = [];
 
       for (const file of files) {
@@ -116,9 +99,14 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/prescriptions/:patientId", async (req: Request, res: Response) => {
+  app.get("/api/prescriptions", isAuthenticated, async (req: any, res: Response) => {
     try {
-      const prescriptions = await storage.getPrescriptionsByPatientId(req.params.patientId);
+      const userId = req.user.claims.sub;
+      const patient = await storage.getPatientByUserId(userId);
+      if (!patient) {
+        return res.json([]);
+      }
+      const prescriptions = await storage.getPrescriptionsByPatientId(patient.id);
       res.json(prescriptions);
     } catch (error) {
       console.error("Failed to get prescriptions:", error);
@@ -127,11 +115,12 @@ export async function registerRoutes(
   });
 
   // ==================== 증상별 과거 기록 및 통계 API ====================
-  app.get("/api/symptom-history/:deviceId/:chiefComplaint", async (req: Request, res: Response) => {
+  app.get("/api/symptom-history/:chiefComplaint", isAuthenticated, async (req: any, res: Response) => {
     try {
-      const { deviceId, chiefComplaint } = req.params;
+      const { chiefComplaint } = req.params;
+      const userId = req.user.claims.sub;
       
-      const patient = await storage.getPatientByDeviceId(deviceId);
+      const patient = await storage.getPatientByUserId(userId);
       if (!patient) {
         return res.json({ 
           hasHistory: false, 
@@ -162,11 +151,12 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/medication-stats/:deviceId/:chiefComplaint", async (req: Request, res: Response) => {
+  app.get("/api/medication-stats/:chiefComplaint", isAuthenticated, async (req: any, res: Response) => {
     try {
-      const { deviceId, chiefComplaint } = req.params;
+      const { chiefComplaint } = req.params;
+      const userId = req.user.claims.sub;
       
-      const patient = await storage.getPatientByDeviceId(deviceId);
+      const patient = await storage.getPatientByUserId(userId);
       if (!patient) {
         return res.json([]);
       }
@@ -180,9 +170,14 @@ export async function registerRoutes(
   });
 
   // ==================== 접수 API ====================
-  app.get("/api/intakes", async (req: Request, res: Response) => {
+  app.get("/api/intakes", isAuthenticated, async (req: any, res: Response) => {
     try {
-      const intakes = await storage.getIntakes();
+      const userId = req.user.claims.sub;
+      const patient = await storage.getPatientByUserId(userId);
+      if (!patient) {
+        return res.json([]);
+      }
+      const intakes = await storage.getIntakesByPatientId(patient.id);
       res.json(intakes);
     } catch (error) {
       console.error("Failed to get intakes:", error);
@@ -190,15 +185,13 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/intakes", upload.array("documents", 5), async (req: Request, res: Response) => {
+  app.post("/api/intakes", isAuthenticated, upload.array("documents", 5), async (req: any, res: Response) => {
     try {
       const files = req.files as Express.Multer.File[] || [];
+      const userId = req.user.claims.sub;
       
-      let patientId: string | null = null;
-      if (req.body.deviceId) {
-        const patient = await storage.getOrCreatePatient(req.body.deviceId);
-        patientId = patient.id;
-      }
+      const patient = await storage.getOrCreatePatient(userId);
+      const patientId = patient.id;
 
       const rawIntakeData = {
         patientId,
@@ -373,11 +366,19 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/intakes/:id", async (req: Request, res: Response) => {
+  app.get("/api/intakes/:id", isAuthenticated, async (req: any, res: Response) => {
     try {
+      const userId = req.user.claims.sub;
+      const patient = await storage.getPatientByUserId(userId);
+      if (!patient) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const intake = await storage.getIntake(req.params.id);
       if (!intake) {
         return res.status(404).json({ error: "Intake not found" });
+      }
+      if (intake.patientId !== patient.id) {
+        return res.status(403).json({ error: "Access denied" });
       }
       res.json(intake);
     } catch (error) {
@@ -386,8 +387,20 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/intakes/:id", async (req: Request, res: Response) => {
+  app.delete("/api/intakes/:id", isAuthenticated, async (req: any, res: Response) => {
     try {
+      const userId = req.user.claims.sub;
+      const patient = await storage.getPatientByUserId(userId);
+      if (!patient) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const intake = await storage.getIntake(req.params.id);
+      if (!intake) {
+        return res.status(404).json({ error: "Intake not found" });
+      }
+      if (intake.patientId !== patient.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       await storage.deleteIntake(req.params.id);
       res.json({ success: true });
     } catch (error) {
@@ -396,11 +409,19 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/intakes/:id/token", async (req: Request, res: Response) => {
+  app.get("/api/intakes/:id/token", isAuthenticated, async (req: any, res: Response) => {
     try {
+      const userId = req.user.claims.sub;
+      const patient = await storage.getPatientByUserId(userId);
+      if (!patient) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const intake = await storage.getIntake(req.params.id);
       if (!intake) {
         return res.status(404).json({ error: "Intake not found" });
+      }
+      if (intake.patientId !== patient.id) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
       let token = await storage.getActiveTokenByIntakeId(req.params.id);
@@ -422,11 +443,19 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/intakes/:id/token/regenerate", async (req: Request, res: Response) => {
+  app.post("/api/intakes/:id/token/regenerate", isAuthenticated, async (req: any, res: Response) => {
     try {
+      const userId = req.user.claims.sub;
+      const patient = await storage.getPatientByUserId(userId);
+      if (!patient) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const intake = await storage.getIntake(req.params.id);
       if (!intake) {
         return res.status(404).json({ error: "Intake not found" });
+      }
+      if (intake.patientId !== patient.id) {
+        return res.status(403).json({ error: "Access denied" });
       }
 
       await storage.invalidateTokensByIntakeId(req.params.id);
@@ -446,8 +475,20 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/intakes/:id/logs", async (req: Request, res: Response) => {
+  app.get("/api/intakes/:id/logs", isAuthenticated, async (req: any, res: Response) => {
     try {
+      const userId = req.user.claims.sub;
+      const patient = await storage.getPatientByUserId(userId);
+      if (!patient) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const intake = await storage.getIntake(req.params.id);
+      if (!intake) {
+        return res.status(404).json({ error: "Intake not found" });
+      }
+      if (intake.patientId !== patient.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
       const logs = await storage.getAccessLogsByIntakeId(req.params.id);
       res.json(logs);
     } catch (error) {
@@ -457,9 +498,10 @@ export async function registerRoutes(
   });
 
   // ==================== 알림 API ====================
-  app.get("/api/notifications/:deviceId", async (req: Request, res: Response) => {
+  app.get("/api/notifications", isAuthenticated, async (req: any, res: Response) => {
     try {
-      const patient = await storage.getPatientByDeviceId(req.params.deviceId);
+      const userId = req.user.claims.sub;
+      const patient = await storage.getPatientByUserId(userId);
       if (!patient) {
         return res.json({ notifications: [], unreadCount: 0 });
       }
@@ -476,7 +518,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/notifications/:id/read", async (req: Request, res: Response) => {
+  app.post("/api/notifications/:id/read", isAuthenticated, async (req: any, res: Response) => {
     try {
       await storage.markNotificationAsRead(req.params.id);
       res.json({ success: true });
@@ -486,9 +528,10 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/notifications/:deviceId/read-all", async (req: Request, res: Response) => {
+  app.post("/api/notifications/read-all", isAuthenticated, async (req: any, res: Response) => {
     try {
-      const patient = await storage.getPatientByDeviceId(req.params.deviceId);
+      const userId = req.user.claims.sub;
+      const patient = await storage.getPatientByUserId(userId);
       if (!patient) {
         return res.status(404).json({ error: "Patient not found" });
       }
@@ -501,9 +544,10 @@ export async function registerRoutes(
   });
 
   // ==================== 알림 설정 API ====================
-  app.get("/api/notification-settings/:deviceId", async (req: Request, res: Response) => {
+  app.get("/api/notification-settings", isAuthenticated, async (req: any, res: Response) => {
     try {
-      const patient = await storage.getOrCreatePatient(req.params.deviceId);
+      const userId = req.user.claims.sub;
+      const patient = await storage.getOrCreatePatient(userId);
       
       let settings = await storage.getNotificationSettings(patient.id);
       
@@ -523,9 +567,10 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/notification-settings/:deviceId", async (req: Request, res: Response) => {
+  app.post("/api/notification-settings", isAuthenticated, async (req: any, res: Response) => {
     try {
-      const patient = await storage.getOrCreatePatient(req.params.deviceId);
+      const userId = req.user.claims.sub;
+      const patient = await storage.getOrCreatePatient(userId);
       const settings = await storage.createOrUpdateNotificationSettings(patient.id, req.body);
       res.json(settings);
     } catch (error) {
@@ -535,9 +580,10 @@ export async function registerRoutes(
   });
 
   // ==================== 복약 순응도 API ====================
-  app.get("/api/adherence/:deviceId", async (req: Request, res: Response) => {
+  app.get("/api/adherence", isAuthenticated, async (req: any, res: Response) => {
     try {
-      const patient = await storage.getPatientByDeviceId(req.params.deviceId);
+      const userId = req.user.claims.sub;
+      const patient = await storage.getPatientByUserId(userId);
       if (!patient) {
         return res.json({ 
           totalScheduled: 0, 
@@ -557,9 +603,10 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/adherence/:deviceId/logs", async (req: Request, res: Response) => {
+  app.get("/api/adherence/logs", isAuthenticated, async (req: any, res: Response) => {
     try {
-      const patient = await storage.getPatientByDeviceId(req.params.deviceId);
+      const userId = req.user.claims.sub;
+      const patient = await storage.getPatientByUserId(userId);
       if (!patient) {
         return res.json([]);
       }
@@ -572,9 +619,10 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/adherence/:deviceId/log", async (req: Request, res: Response) => {
+  app.post("/api/adherence/log", isAuthenticated, async (req: any, res: Response) => {
     try {
-      const patient = await storage.getPatientByDeviceId(req.params.deviceId);
+      const userId = req.user.claims.sub;
+      const patient = await storage.getPatientByUserId(userId);
       if (!patient) {
         return res.status(404).json({ error: "Patient not found" });
       }
@@ -604,9 +652,10 @@ export async function registerRoutes(
   });
 
   // ==================== 처방 전체 조회 (약물 포함) API ====================
-  app.get("/api/prescriptions-with-meds/:deviceId", async (req: Request, res: Response) => {
+  app.get("/api/prescriptions-with-meds", isAuthenticated, async (req: any, res: Response) => {
     try {
-      const patient = await storage.getPatientByDeviceId(req.params.deviceId);
+      const userId = req.user.claims.sub;
+      const patient = await storage.getPatientByUserId(userId);
       if (!patient) {
         return res.json([]);
       }

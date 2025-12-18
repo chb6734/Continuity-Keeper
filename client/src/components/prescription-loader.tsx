@@ -11,13 +11,11 @@ import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 
 interface PrescriptionLoaderProps {
-  deviceId: string;
   onPrescriptionsSelected: (prescriptions: PrescriptionWithMedications[]) => void;
   selectedPrescriptionIds: string[];
 }
 
 export function PrescriptionLoader({
-  deviceId,
   onPrescriptionsSelected,
   selectedPrescriptionIds,
 }: PrescriptionLoaderProps) {
@@ -25,8 +23,7 @@ export function PrescriptionLoader({
   const [selectedIds, setSelectedIds] = useState<string[]>(selectedPrescriptionIds);
 
   const { data: prescriptions = [], isLoading } = useQuery<PrescriptionWithMedications[]>({
-    queryKey: ["/api/prescriptions-with-meds", deviceId],
-    enabled: !!deviceId,
+    queryKey: ["/api/prescriptions-with-meds"],
   });
 
   const toggleExpand = (id: string) => {

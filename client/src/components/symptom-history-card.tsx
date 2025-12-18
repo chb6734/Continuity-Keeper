@@ -6,21 +6,20 @@ import { History, Pill, Calendar, TrendingUp } from "lucide-react";
 import { CHIEF_COMPLAINTS, type SymptomHistory } from "@shared/schema";
 
 interface SymptomHistoryCardProps {
-  deviceId: string;
   chiefComplaint: string;
 }
 
-export function SymptomHistoryCard({ deviceId, chiefComplaint }: SymptomHistoryCardProps) {
+export function SymptomHistoryCard({ chiefComplaint }: SymptomHistoryCardProps) {
   const { data, isLoading } = useQuery<SymptomHistory & { hasHistory: boolean }>({
-    queryKey: ['/api/symptom-history', deviceId, chiefComplaint],
+    queryKey: ['/api/symptom-history', chiefComplaint],
     queryFn: async () => {
-      const response = await fetch(`/api/symptom-history/${encodeURIComponent(deviceId)}/${encodeURIComponent(chiefComplaint)}`);
+      const response = await fetch(`/api/symptom-history/${encodeURIComponent(chiefComplaint)}`);
       if (!response.ok) {
         throw new Error('Failed to fetch symptom history');
       }
       return response.json();
     },
-    enabled: !!deviceId && !!chiefComplaint,
+    enabled: !!chiefComplaint,
   });
 
   if (!chiefComplaint) return null;

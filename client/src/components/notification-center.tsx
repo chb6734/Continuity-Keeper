@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
@@ -10,13 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bell, CheckCheck, Eye, Clock, Pill } from "lucide-react";
-import { format, parseISO, formatDistanceToNow } from "date-fns";
+import { parseISO, formatDistanceToNow } from "date-fns";
 import { ko } from "date-fns/locale";
 import type { Notification } from "@shared/schema";
-
-interface NotificationCenterProps {
-  deviceId: string;
-}
 
 const getNotificationIcon = (type: string) => {
   switch (type) {
@@ -31,20 +27,14 @@ const getNotificationIcon = (type: string) => {
   }
 };
 
-export function NotificationCenter({ deviceId }: NotificationCenterProps) {
+export function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
 
   const { data, isLoading } = useQuery<{
     notifications: Notification[];
     unreadCount: number;
   }>({
-    queryKey: ["/api/notifications", deviceId],
-    queryFn: async () => {
-      const response = await fetch(`/api/notifications/${encodeURIComponent(deviceId)}`);
-      if (!response.ok) throw new Error("Failed to fetch notifications");
-      return response.json();
-    },
-    enabled: !!deviceId,
+    queryKey: ["/api/notifications"],
     refetchInterval: 30000,
   });
 
@@ -53,16 +43,16 @@ export function NotificationCenter({ deviceId }: NotificationCenterProps) {
       return apiRequest("POST", `/api/notifications/${notificationId}/read`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications", deviceId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
     },
   });
 
   const markAllAsReadMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", `/api/notifications/${deviceId}/read-all`);
+      return apiRequest("POST", `/api/notifications/read-all`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications", deviceId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
     },
   });
 

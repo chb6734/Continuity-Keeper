@@ -9,16 +9,11 @@ import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { useLocation } from "wouter";
 
-interface MedicationHistoryCardProps {
-  deviceId: string;
-}
-
-export function MedicationHistoryCard({ deviceId }: MedicationHistoryCardProps) {
+export function MedicationHistoryCard() {
   const [, navigate] = useLocation();
   
   const { data: prescriptions = [], isLoading } = useQuery<PrescriptionWithMedications[]>({
-    queryKey: ["/api/prescriptions-with-meds", deviceId],
-    enabled: !!deviceId,
+    queryKey: ["/api/prescriptions-with-meds"],
   });
 
   const allMedications = prescriptions.flatMap((p) => 

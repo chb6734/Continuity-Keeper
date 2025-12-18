@@ -1,8 +1,33 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
+
+// 세션 스토리지 테이블 (Replit Auth 필수)
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: jsonb("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
+
+// 사용자 테이블 (Replit Auth 필수)
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar("email").unique(),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type UpsertUser = typeof users.$inferInsert;
+export type User = typeof users.$inferSelect;
 
 // 병원/의료기관 테이블
 export const hospitals = pgTable("hospitals", {
@@ -16,10 +41,10 @@ export const insertHospitalSchema = createInsertSchema(hospitals).omit({ id: tru
 export type InsertHospital = z.infer<typeof insertHospitalSchema>;
 export type Hospital = typeof hospitals.$inferSelect;
 
-// 환자 테이블 (기기별 로컬 ID로 식별)
+// 환자 테이블 (사용자별 식별)
 export const patients = pgTable("patients", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  deviceId: text("device_id").notNull(), // 브라우저 localStorage에 저장된 고유 ID
+  userId: varchar("user_id").notNull(), // Replit Auth 사용자 ID
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -243,7 +268,15 @@ export type InsertNotificationSettings = z.infer<typeof insertNotificationSettin
 export type NotificationSettings = typeof notificationSettings.$inferSelect;
 
 // Relations
-export const patientsRelations = relations(patients, ({ many }) => ({
+export const usersRelations = relations(users, ({ many }) => ({
+  patients: many(patients),
+}));
+
+export const patientsRelations = relations(patients, ({ one, many }) => ({
+  user: one(users, {
+    fields: [patients.userId],
+    references: [users.id],
+  }),
   prescriptions: many(prescriptions),
   intakes: many(intakes),
 }));

@@ -20,24 +20,12 @@ import { type PrescriptionWithMedications } from "@shared/schema";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 
-function getDeviceId(): string {
-  const DEVICE_ID_KEY = "medbridge_device_id";
-  let deviceId = localStorage.getItem(DEVICE_ID_KEY);
-  if (!deviceId) {
-    deviceId = crypto.randomUUID();
-    localStorage.setItem(DEVICE_ID_KEY, deviceId);
-  }
-  return deviceId;
-}
-
 export default function MyMedications() {
   const [, navigate] = useLocation();
-  const [deviceId] = useState(() => getDeviceId());
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
 
   const { data: prescriptions = [], isLoading } = useQuery<PrescriptionWithMedications[]>({
-    queryKey: ["/api/prescriptions-with-meds", deviceId],
-    enabled: !!deviceId,
+    queryKey: ["/api/prescriptions-with-meds"],
   });
 
   const toggleExpand = (id: string) => {

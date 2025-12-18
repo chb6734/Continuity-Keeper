@@ -29,16 +29,6 @@ import { CHIEF_COMPLAINTS, COURSE_STATUS, ADHERENCE_OPTIONS, type PrescriptionWi
 
 const STEPS = ["문서 업로드", "주호소", "경과", "복약", "부작용", "확인"];
 
-function getDeviceId(): string {
-  const DEVICE_ID_KEY = "medbridge_device_id";
-  let deviceId = localStorage.getItem(DEVICE_ID_KEY);
-  if (!deviceId) {
-    deviceId = crypto.randomUUID();
-    localStorage.setItem(DEVICE_ID_KEY, deviceId);
-  }
-  return deviceId;
-}
-
 interface IntakeFormData {
   hospitalId: string;
   hospitalName: string;
@@ -65,7 +55,6 @@ export default function IntakePage() {
   const hospitalId = params.get("hospitalId") || "";
   const hospitalName = params.get("hospitalName") || "";
 
-  const [deviceId] = useState(() => getDeviceId());
   const [currentStep, setCurrentStep] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [isProcessingOcr, setIsProcessingOcr] = useState(false);
@@ -99,7 +88,6 @@ export default function IntakePage() {
     mutationFn: async () => {
       const formDataObj = new FormData();
       
-      formDataObj.append("deviceId", deviceId);
       Object.entries(formData).forEach(([key, value]) => {
         formDataObj.append(key, String(value));
       });
@@ -220,7 +208,6 @@ export default function IntakePage() {
                 
                 <TabsContent value="existing" className="mt-4">
                   <PrescriptionLoader
-                    deviceId={deviceId}
                     onPrescriptionsSelected={setSelectedPrescriptions}
                     selectedPrescriptionIds={selectedPrescriptions.map((p) => p.prescription.id)}
                   />
@@ -277,7 +264,6 @@ export default function IntakePage() {
               </div>
 
               <SymptomHistoryCard 
-                deviceId={deviceId} 
                 chiefComplaint={formData.chiefComplaint} 
               />
 

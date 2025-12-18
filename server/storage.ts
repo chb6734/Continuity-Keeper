@@ -11,6 +11,7 @@ import {
   notifications,
   notificationSettings,
   adherenceLogs,
+  users,
   type Hospital, 
   type InsertHospital,
   type Intake, 
@@ -39,21 +40,27 @@ import {
   type PrescriptionWithMedications,
   type MedicationStats,
   type SymptomHistory,
-  type AdherenceSummary
+  type AdherenceSummary,
+  type User,
+  type UpsertUser
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gt, sql } from "drizzle-orm";
 
 export interface IStorage {
+  // Users (Replit Auth 필수)
+  getUser(id: string): Promise<User | undefined>;
+  upsertUser(user: UpsertUser): Promise<User>;
+  
   // Hospitals
   getHospitals(): Promise<Hospital[]>;
   getHospital(id: string): Promise<Hospital | undefined>;
   createHospital(hospital: InsertHospital): Promise<Hospital>;
   
   // Patients
-  getPatientByDeviceId(deviceId: string): Promise<Patient | undefined>;
+  getPatientByUserId(userId: string): Promise<Patient | undefined>;
   createPatient(patient: InsertPatient): Promise<Patient>;
-  getOrCreatePatient(deviceId: string): Promise<Patient>;
+  getOrCreatePatient(userId: string): Promise<Patient>;
   
   // Prescriptions
   getPrescriptionsByPatientId(patientId: string): Promise<Prescription[]>;
@@ -119,6 +126,27 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // Users (Replit Auth 필수)
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...userData,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return user;
+  }
+
   // Hospitals
   async getHospitals(): Promise<Hospital[]> {
     return db.select().from(hospitals);
@@ -135,8 +163,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Patients
-  async getPatientByDeviceId(deviceId: string): Promise<Patient | undefined> {
-    const [patient] = await db.select().from(patients).where(eq(patients.deviceId, deviceId));
+  async getPatientByUserId(userId: string): Promise<Patient | undefined> {
+    const [patient] = await db.select().from(patients).where(eq(patients.userId, userId));
     return patient || undefined;
   }
 
@@ -145,10 +173,10 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async getOrCreatePatient(deviceId: string): Promise<Patient> {
-    let patient = await this.getPatientByDeviceId(deviceId);
+  async getOrCreatePatient(userId: string): Promise<Patient> {
+    let patient = await this.getPatientByUserId(userId);
     if (!patient) {
-      patient = await this.createPatient({ deviceId });
+      patient = await this.createPatient({ userId });
     }
     return patient;
   }
