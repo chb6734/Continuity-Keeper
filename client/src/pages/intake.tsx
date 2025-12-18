@@ -109,6 +109,7 @@ export default function IntakePage() {
       const response = await fetch("/api/intakes", {
         method: "POST",
         body: formDataObj,
+        credentials: "include",
       });
 
       if (!response.ok) {
