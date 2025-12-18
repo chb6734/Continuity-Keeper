@@ -6,6 +6,7 @@ import { ProgressSteps } from "@/components/progress-steps";
 import { DocumentUpload } from "@/components/document-upload";
 import { SymptomHistoryCard } from "@/components/symptom-history-card";
 import { PrescriptionLoader } from "@/components/prescription-loader";
+import { OcrVerificationModal, type OcrResult, type ExtractedMedication } from "@/components/ocr-verification-modal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -57,9 +58,13 @@ export default function IntakePage() {
 
   const [currentStep, setCurrentStep] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [fileUrls, setFileUrls] = useState<string[]>([]);
   const [isProcessingOcr, setIsProcessingOcr] = useState(false);
   const [documentTab, setDocumentTab] = useState<"upload" | "existing">("upload");
   const [selectedPrescriptions, setSelectedPrescriptions] = useState<PrescriptionWithMedications[]>([]);
+  const [showOcrVerification, setShowOcrVerification] = useState(false);
+  const [ocrResults, setOcrResults] = useState<OcrResult[]>([]);
+  const [verifiedMedications, setVerifiedMedications] = useState<ExtractedMedication[]>([]);
 
   const [formData, setFormData] = useState<IntakeFormData>({
     hospitalId,
@@ -92,9 +97,9 @@ export default function IntakePage() {
         formDataObj.append(key, String(value));
       });
       
-      uploadedFiles.forEach((file) => {
-        formDataObj.append(`documents`, file);
-      });
+      if (verifiedMedications.length > 0) {
+        formDataObj.append("verifiedMedications", JSON.stringify(verifiedMedications));
+      }
       
       if (selectedPrescriptions.length > 0) {
         const prescriptionIds = selectedPrescriptions.map((p) => p.prescription.id);
@@ -155,7 +160,94 @@ export default function IntakePage() {
     }
   };
 
+  const processOcr = async () => {
+    if (uploadedFiles.length === 0) {
+      setCurrentStep(currentStep + 1);
+      return;
+    }
+
+    setIsProcessingOcr(true);
+    try {
+      const urls: string[] = [];
+      const results: OcrResult[] = [];
+
+      for (const file of uploadedFiles) {
+        const url = URL.createObjectURL(file);
+        urls.push(url);
+
+        const formDataObj = new FormData();
+        formDataObj.append("documents", file);
+
+        const response = await fetch("/api/prescriptions/import", {
+          method: "POST",
+          body: formDataObj,
+        });
+
+        if (!response.ok) {
+          throw new Error("OCR 처리에 실패했습니다");
+        }
+
+        const data = await response.json();
+        
+        const medications: ExtractedMedication[] = [];
+        if (data.prescriptions && data.prescriptions.length > 0) {
+          for (const prescription of data.prescriptions) {
+            for (const med of prescription.medications || []) {
+              medications.push({
+                id: med.id || `med-${Date.now()}-${Math.random()}`,
+                name: med.medicationName || med.name || "",
+                dose: med.dose || "",
+                frequency: med.frequency || "",
+                duration: med.duration || "",
+                confidence: med.confidence || 80,
+              });
+            }
+          }
+        }
+
+        results.push({
+          imageUrl: url,
+          fileName: file.name,
+          medications,
+        });
+      }
+
+      setFileUrls(urls);
+      setOcrResults(results);
+      setShowOcrVerification(true);
+    } catch (error: any) {
+      toast({
+        title: "OCR 처리 오류",
+        description: error.message || "처방전 분석에 실패했습니다",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessingOcr(false);
+    }
+  };
+
+  const handleOcrConfirm = (confirmedResults: OcrResult[]) => {
+    const allMedications = confirmedResults.flatMap((r) => r.medications);
+    setVerifiedMedications(allMedications);
+    setShowOcrVerification(false);
+    fileUrls.forEach((url) => URL.revokeObjectURL(url));
+    setFileUrls([]);
+    setCurrentStep(currentStep + 1);
+  };
+
+  const handleOcrCancel = () => {
+    fileUrls.forEach((url) => URL.revokeObjectURL(url));
+    setFileUrls([]);
+    setOcrResults([]);
+    setShowOcrVerification(false);
+  };
+
   const handleNext = () => {
+    if (currentStep === 0 && uploadedFiles.length > 0) {
+      processOcr();
+      return;
+    }
+
     if (currentStep < STEPS.length - 1) {
       setCurrentStep(currentStep + 1);
     } else {
@@ -560,14 +652,14 @@ export default function IntakePage() {
           <Button
             size="lg"
             className="flex-1 gap-2"
-            disabled={!canProceed() || submitMutation.isPending}
+            disabled={!canProceed() || submitMutation.isPending || isProcessingOcr}
             onClick={handleNext}
             data-testid="button-next-step"
           >
-            {submitMutation.isPending ? (
+            {submitMutation.isPending || isProcessingOcr ? (
               <>
                 <Loader2 className="h-5 w-5 animate-spin" />
-                처리 중...
+                {isProcessingOcr ? "분석 중..." : "처리 중..."}
               </>
             ) : currentStep === STEPS.length - 1 ? (
               "접수 완료"
@@ -580,6 +672,14 @@ export default function IntakePage() {
           </Button>
         </div>
       </div>
+
+      <OcrVerificationModal
+        open={showOcrVerification}
+        onOpenChange={setShowOcrVerification}
+        ocrResults={ocrResults}
+        onConfirm={handleOcrConfirm}
+        onCancel={handleOcrCancel}
+      />
     </div>
   );
 }

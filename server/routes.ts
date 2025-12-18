@@ -225,65 +225,120 @@ export async function registerRoutes(
 
       const allMedications: any[] = [];
 
-      for (const file of files) {
+      if (req.body.verifiedMedications) {
         try {
-          const ocrResult = await extractMedicationsFromImage(
-            file.buffer,
-            file.mimetype
-          );
+          const verifiedMeds = JSON.parse(req.body.verifiedMedications);
+          
+          if (verifiedMeds.length > 0 && patientId) {
+            const prescription = await storage.createPrescription({
+              patientId,
+              chiefComplaint: intakeData.chiefComplaint || null,
+              hospitalName: intakeData.hospitalName || null,
+              prescriptionDate: null,
+              dispensingDate: null,
+              rawOcrText: null,
+            });
 
-          if (ocrResult.medications.length > 0) {
-            // 처방 기록을 prescriptions 테이블에도 저장 (나중에 불러올 수 있도록)
-            if (patientId) {
-              const prescription = await storage.createPrescription({
-                patientId,
-                chiefComplaint: intakeData.chiefComplaint || null,
-                hospitalName: intakeData.hospitalName || null,
-                prescriptionDate: ocrResult.medications[0].prescriptionDate || null,
-                dispensingDate: ocrResult.medications[0].dispensingDate || null,
-                rawOcrText: ocrResult.rawText,
+            for (const med of verifiedMeds) {
+              await storage.createPrescriptionMedication({
+                prescriptionId: prescription.id,
+                medicationName: med.name,
+                dose: med.dose,
+                frequency: med.frequency,
+                duration: med.duration,
+                confidence: 100,
+                needsVerification: false,
+                ingredients: null,
+                indication: null,
+                dosesPerDay: null,
+                totalDoses: null,
               });
-
-              for (const med of ocrResult.medications) {
-                await storage.createPrescriptionMedication({
-                  prescriptionId: prescription.id,
-                  medicationName: med.medicationName,
-                  dose: med.dose,
-                  frequency: med.frequency,
-                  duration: med.duration,
-                  confidence: med.confidence,
-                  needsVerification: med.confidence < 70,
-                  ingredients: med.ingredients,
-                  indication: med.indication,
-                  dosesPerDay: med.dosesPerDay,
-                  totalDoses: med.totalDoses,
-                });
-              }
             }
           }
 
-          for (const med of ocrResult.medications) {
+          for (const med of verifiedMeds) {
             const medication = await storage.createMedication({
               intakeId: intake.id,
-              medicationName: med.medicationName,
+              medicationName: med.name,
               dose: med.dose,
               frequency: med.frequency,
               duration: med.duration,
-              prescriptionDate: med.prescriptionDate,
-              dispensingDate: med.dispensingDate,
-              confidence: med.confidence,
-              needsVerification: med.confidence < 70,
-              rawOcrText: med.rawOcrText,
-              sourceType: "prescription",
-              ingredients: med.ingredients,
-              indication: med.indication,
-              dosesPerDay: med.dosesPerDay,
-              totalDoses: med.totalDoses,
+              prescriptionDate: null,
+              dispensingDate: null,
+              confidence: 100,
+              needsVerification: false,
+              rawOcrText: null,
+              sourceType: "verified_prescription",
+              ingredients: null,
+              indication: null,
+              dosesPerDay: null,
+              totalDoses: null,
             });
             allMedications.push(medication);
           }
-        } catch (ocrError) {
-          console.error("OCR failed for file:", ocrError);
+        } catch (parseError) {
+          console.error("Failed to parse verified medications:", parseError);
+        }
+      } else {
+        for (const file of files) {
+          try {
+            const ocrResult = await extractMedicationsFromImage(
+              file.buffer,
+              file.mimetype
+            );
+
+            if (ocrResult.medications.length > 0) {
+              if (patientId) {
+                const prescription = await storage.createPrescription({
+                  patientId,
+                  chiefComplaint: intakeData.chiefComplaint || null,
+                  hospitalName: intakeData.hospitalName || null,
+                  prescriptionDate: ocrResult.medications[0].prescriptionDate || null,
+                  dispensingDate: ocrResult.medications[0].dispensingDate || null,
+                  rawOcrText: ocrResult.rawText,
+                });
+
+                for (const med of ocrResult.medications) {
+                  await storage.createPrescriptionMedication({
+                    prescriptionId: prescription.id,
+                    medicationName: med.medicationName,
+                    dose: med.dose,
+                    frequency: med.frequency,
+                    duration: med.duration,
+                    confidence: med.confidence,
+                    needsVerification: med.confidence < 70,
+                    ingredients: med.ingredients,
+                    indication: med.indication,
+                    dosesPerDay: med.dosesPerDay,
+                    totalDoses: med.totalDoses,
+                  });
+                }
+              }
+            }
+
+            for (const med of ocrResult.medications) {
+              const medication = await storage.createMedication({
+                intakeId: intake.id,
+                medicationName: med.medicationName,
+                dose: med.dose,
+                frequency: med.frequency,
+                duration: med.duration,
+                prescriptionDate: med.prescriptionDate,
+                dispensingDate: med.dispensingDate,
+                confidence: med.confidence,
+                needsVerification: med.confidence < 70,
+                rawOcrText: med.rawOcrText,
+                sourceType: "prescription",
+                ingredients: med.ingredients,
+                indication: med.indication,
+                dosesPerDay: med.dosesPerDay,
+                totalDoses: med.totalDoses,
+              });
+              allMedications.push(medication);
+            }
+          } catch (ocrError) {
+            console.error("OCR failed for file:", ocrError);
+          }
         }
       }
       
