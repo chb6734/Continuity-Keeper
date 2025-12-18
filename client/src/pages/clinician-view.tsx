@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/header";
 import { MedicationTimeline } from "@/components/medication-timeline";
 import { MedicationAnalysisCard } from "@/components/medication-analysis-card";
+import { AdherenceSummaryCard } from "@/components/adherence-summary-card";
 import { IntakeSummaryCard } from "@/components/intake-summary-card";
 import { VerificationFlagsCard } from "@/components/verification-flags-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -130,6 +131,10 @@ export default function ClinicianViewPage() {
         )}
 
         <IntakeSummaryCard intake={data.intake} />
+
+        {data.adherenceSummary && data.adherenceSummary.totalScheduled > 0 && (
+          <AdherenceSummaryCard summary={data.adherenceSummary} />
+        )}
 
         {data.medications.length > 0 && (
           <>

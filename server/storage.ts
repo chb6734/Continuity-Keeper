@@ -373,11 +373,17 @@ export class DatabaseStorage implements IStorage {
       this.getAccessLogsByIntakeId(intakeId),
     ]);
 
+    let adherenceSummary = undefined;
+    if (intake.patientId) {
+      adherenceSummary = await this.getAdherenceSummary(intake.patientId);
+    }
+
     return {
       intake,
       medications: meds,
       verificationFlags: flags,
       accessLogs: logs,
+      adherenceSummary,
     };
   }
 

@@ -341,6 +341,7 @@ export interface IntakeSummary {
   medications: Medication[];
   verificationFlags: VerificationFlag[];
   accessLogs: AccessLog[];
+  adherenceSummary?: AdherenceSummary;
 }
 
 // 처방 기록 + 약물 (API 응답용)
