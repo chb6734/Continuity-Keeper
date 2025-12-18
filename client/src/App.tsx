@@ -10,6 +10,7 @@ import IntakePage from "@/pages/intake";
 import SharePage from "@/pages/share";
 import ClinicianViewPage from "@/pages/clinician-view";
 import MyIntakesPage from "@/pages/my-intakes";
+import MyMedicationsPage from "@/pages/my-medications";
 
 function Router() {
   return (
@@ -19,6 +20,7 @@ function Router() {
       <Route path="/share/:id" component={SharePage} />
       <Route path="/view/:token" component={ClinicianViewPage} />
       <Route path="/my-intakes" component={MyIntakesPage} />
+      <Route path="/my-medications" component={MyMedicationsPage} />
       <Route component={NotFound} />
     </Switch>
   );

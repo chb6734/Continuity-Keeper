@@ -239,6 +239,36 @@ export async function registerRoutes(
             file.mimetype
           );
 
+          if (ocrResult.medications.length > 0) {
+            // 처방 기록을 prescriptions 테이블에도 저장 (나중에 불러올 수 있도록)
+            if (patientId) {
+              const prescription = await storage.createPrescription({
+                patientId,
+                chiefComplaint: intakeData.chiefComplaint || null,
+                hospitalName: intakeData.hospitalName || null,
+                prescriptionDate: ocrResult.medications[0].prescriptionDate || null,
+                dispensingDate: ocrResult.medications[0].dispensingDate || null,
+                rawOcrText: ocrResult.rawText,
+              });
+
+              for (const med of ocrResult.medications) {
+                await storage.createPrescriptionMedication({
+                  prescriptionId: prescription.id,
+                  medicationName: med.medicationName,
+                  dose: med.dose,
+                  frequency: med.frequency,
+                  duration: med.duration,
+                  confidence: med.confidence,
+                  needsVerification: med.confidence < 70,
+                  ingredients: med.ingredients,
+                  indication: med.indication,
+                  dosesPerDay: med.dosesPerDay,
+                  totalDoses: med.totalDoses,
+                });
+              }
+            }
+          }
+
           for (const med of ocrResult.medications) {
             const medication = await storage.createMedication({
               intakeId: intake.id,
