@@ -93,6 +93,9 @@ MedBridge는 환자가 이전 진료 정보를 새로운 의료기관의 의료�
 - 환자 식별을 위한 deviceId 기반 patients 테이블 추가
 - 증상 선택 시 과거 동일 증상 진료 기록 자동 조회
 - 과거 기록이 있으면 처방받은 약물 통계 표시
+- 접수 시 OCR 결과를 medications 테이블뿐만 아니라 prescriptions/prescription_medications 테이블에도 저장 (이후 불러오기 가능)
+- 홈 화면에 MedicationHistoryCard 추가 (처방받은 약물 목록 표시)
+- /my-medications 페이지 추가 (전체 약물 기록 상세 조회)
 
 ## 보안/개인정보
 - 원본 이미지는 서버에 저장하지 않음 (OCR 후 즉시 삭제)
