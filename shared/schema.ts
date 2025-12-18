@@ -9,16 +9,63 @@ export const hospitals = pgTable("hospitals", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   address: text("address").notNull(),
-  type: text("type").notNull(), // 병원, 의원, 약국
+  type: text("type").notNull(),
 });
 
 export const insertHospitalSchema = createInsertSchema(hospitals).omit({ id: true });
 export type InsertHospital = z.infer<typeof insertHospitalSchema>;
 export type Hospital = typeof hospitals.$inferSelect;
 
+// 환자 테이블 (기기별 로컬 ID로 식별)
+export const patients = pgTable("patients", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  deviceId: text("device_id").notNull(), // 브라우저 localStorage에 저장된 고유 ID
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPatientSchema = createInsertSchema(patients).omit({ id: true, createdAt: true });
+export type InsertPatient = z.infer<typeof insertPatientSchema>;
+export type Patient = typeof patients.$inferSelect;
+
+// 처방 기록 테이블 (약봉지/처방전 사진에서 추출)
+export const prescriptions = pgTable("prescriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  patientId: varchar("patient_id").notNull(),
+  chiefComplaint: text("chief_complaint"), // 어떤 증상으로 처방받았는지
+  hospitalName: text("hospital_name"),
+  prescriptionDate: text("prescription_date"),
+  dispensingDate: text("dispensing_date"),
+  rawOcrText: text("raw_ocr_text"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPrescriptionSchema = createInsertSchema(prescriptions).omit({ 
+  id: true, 
+  createdAt: true 
+});
+export type InsertPrescription = z.infer<typeof insertPrescriptionSchema>;
+export type Prescription = typeof prescriptions.$inferSelect;
+
+// 처방 약물 테이블 (처방 기록에 연결)
+export const prescriptionMedications = pgTable("prescription_medications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  prescriptionId: varchar("prescription_id").notNull(),
+  medicationName: text("medication_name").notNull(),
+  dose: text("dose"),
+  frequency: text("frequency"),
+  duration: text("duration"),
+  confidence: integer("confidence").default(80),
+  needsVerification: boolean("needs_verification").default(false),
+});
+
+export const insertPrescriptionMedicationSchema = createInsertSchema(prescriptionMedications).omit({ id: true });
+export type InsertPrescriptionMedication = z.infer<typeof insertPrescriptionMedicationSchema>;
+export type PrescriptionMedication = typeof prescriptionMedications.$inferSelect;
+
 // 환자 접수 (세션) 테이블
 export const intakes = pgTable("intakes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  patientId: varchar("patient_id"), // 환자 ID (선택적)
   hospitalId: varchar("hospital_id").notNull(),
   hospitalName: text("hospital_name").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -31,11 +78,11 @@ export const intakes = pgTable("intakes", {
   onsetDate: text("onset_date").notNull(),
   
   // 경과
-  courseStatus: text("course_status").notNull(), // improving, worsening, stable
+  courseStatus: text("course_status").notNull(),
   courseDetail: text("course_detail"),
   
   // 복약 순응도
-  adherence: text("adherence").notNull(), // yes, partial, no
+  adherence: text("adherence").notNull(),
   adherenceReason: text("adherence_reason"),
   
   // 부작용/알레르기
@@ -59,28 +106,20 @@ export const insertIntakeSchema = createInsertSchema(intakes).omit({
 export type InsertIntake = z.infer<typeof insertIntakeSchema>;
 export type Intake = typeof intakes.$inferSelect;
 
-// OCR 추출 약물 정보
+// OCR 추출 약물 정보 (접수 시 업로드 - 레거시, 유지)
 export const medications = pgTable("medications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   intakeId: varchar("intake_id").notNull(),
-  
-  // OCR 추출 데이터
   medicationName: text("medication_name").notNull(),
   dose: text("dose"),
   frequency: text("frequency"),
   duration: text("duration"),
   prescriptionDate: text("prescription_date"),
   dispensingDate: text("dispensing_date"),
-  
-  // OCR 신뢰도
-  confidence: integer("confidence").default(80), // 0-100
+  confidence: integer("confidence").default(80),
   needsVerification: boolean("needs_verification").default(false),
-  
-  // 원본 OCR 텍스트
   rawOcrText: text("raw_ocr_text"),
-  
-  // 소스 타입
-  sourceType: text("source_type").notNull(), // prescription, dispensing_record
+  sourceType: text("source_type").notNull(),
 });
 
 export const insertMedicationSchema = createInsertSchema(medications).omit({ id: true });
@@ -91,7 +130,7 @@ export type Medication = typeof medications.$inferSelect;
 export const verificationFlags = pgTable("verification_flags", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   intakeId: varchar("intake_id").notNull(),
-  flagType: text("flag_type").notNull(), // duplicate, date_overlap, allergy_conflict, low_confidence
+  flagType: text("flag_type").notNull(),
   description: text("description").notNull(),
   relatedMedicationIds: text("related_medication_ids").array(),
 });
@@ -123,7 +162,7 @@ export const accessLogs = pgTable("access_logs", {
   intakeId: varchar("intake_id").notNull(),
   tokenId: varchar("token_id").notNull(),
   accessedAt: timestamp("accessed_at").defaultNow().notNull(),
-  action: text("action").notNull(), // view, open
+  action: text("action").notNull(),
 });
 
 export const insertAccessLogSchema = createInsertSchema(accessLogs).omit({ 
@@ -134,7 +173,31 @@ export type InsertAccessLog = z.infer<typeof insertAccessLogSchema>;
 export type AccessLog = typeof accessLogs.$inferSelect;
 
 // Relations
+export const patientsRelations = relations(patients, ({ many }) => ({
+  prescriptions: many(prescriptions),
+  intakes: many(intakes),
+}));
+
+export const prescriptionsRelations = relations(prescriptions, ({ one, many }) => ({
+  patient: one(patients, {
+    fields: [prescriptions.patientId],
+    references: [patients.id],
+  }),
+  medications: many(prescriptionMedications),
+}));
+
+export const prescriptionMedicationsRelations = relations(prescriptionMedications, ({ one }) => ({
+  prescription: one(prescriptions, {
+    fields: [prescriptionMedications.prescriptionId],
+    references: [prescriptions.id],
+  }),
+}));
+
 export const intakesRelations = relations(intakes, ({ many, one }) => ({
+  patient: one(patients, {
+    fields: [intakes.patientId],
+    references: [patients.id],
+  }),
   medications: many(medications),
   verificationFlags: many(verificationFlags),
   accessTokens: many(accessTokens),
@@ -175,6 +238,32 @@ export interface IntakeSummary {
   medications: Medication[];
   verificationFlags: VerificationFlag[];
   accessLogs: AccessLog[];
+}
+
+// 처방 기록 + 약물 (API 응답용)
+export interface PrescriptionWithMedications {
+  prescription: Prescription;
+  medications: PrescriptionMedication[];
+}
+
+// 약물 통계 (API 응답용)
+export interface MedicationStats {
+  medicationName: string;
+  totalCount: number;
+  avgConfidence: number;
+  lastPrescribedDate: string | null;
+  doses: string[];
+  frequencies: string[];
+}
+
+// 증상별 과거 진료 요약
+export interface SymptomHistory {
+  chiefComplaint: string;
+  totalVisits: number;
+  firstVisitDate: string | null;
+  lastVisitDate: string | null;
+  prescriptions: PrescriptionWithMedications[];
+  medicationStats: MedicationStats[];
 }
 
 // 주호소 옵션 (한국어)

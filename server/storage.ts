@@ -5,6 +5,9 @@ import {
   verificationFlags, 
   accessTokens, 
   accessLogs,
+  patients,
+  prescriptions,
+  prescriptionMedications,
   type Hospital, 
   type InsertHospital,
   type Intake, 
@@ -17,11 +20,19 @@ import {
   type InsertAccessToken,
   type AccessLog,
   type InsertAccessLog,
-  type IntakeSummary
+  type Patient,
+  type InsertPatient,
+  type Prescription,
+  type InsertPrescription,
+  type PrescriptionMedication,
+  type InsertPrescriptionMedication,
+  type IntakeSummary,
+  type PrescriptionWithMedications,
+  type MedicationStats,
+  type SymptomHistory
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, gt } from "drizzle-orm";
-import { randomUUID } from "crypto";
+import { eq, and, desc, gt, sql } from "drizzle-orm";
 
 export interface IStorage {
   // Hospitals
@@ -29,8 +40,27 @@ export interface IStorage {
   getHospital(id: string): Promise<Hospital | undefined>;
   createHospital(hospital: InsertHospital): Promise<Hospital>;
   
+  // Patients
+  getPatientByDeviceId(deviceId: string): Promise<Patient | undefined>;
+  createPatient(patient: InsertPatient): Promise<Patient>;
+  getOrCreatePatient(deviceId: string): Promise<Patient>;
+  
+  // Prescriptions
+  getPrescriptionsByPatientId(patientId: string): Promise<Prescription[]>;
+  getPrescriptionsBySymptom(patientId: string, chiefComplaint: string): Promise<PrescriptionWithMedications[]>;
+  createPrescription(prescription: InsertPrescription): Promise<Prescription>;
+  
+  // Prescription Medications
+  getPrescriptionMedications(prescriptionId: string): Promise<PrescriptionMedication[]>;
+  createPrescriptionMedication(medication: InsertPrescriptionMedication): Promise<PrescriptionMedication>;
+  
+  // Symptom History & Statistics
+  getSymptomHistory(patientId: string, chiefComplaint: string): Promise<SymptomHistory | null>;
+  getMedicationStatsBySymptom(patientId: string, chiefComplaint: string): Promise<MedicationStats[]>;
+  
   // Intakes
   getIntakes(): Promise<Intake[]>;
+  getIntakesByPatientId(patientId: string): Promise<Intake[]>;
   getIntake(id: string): Promise<Intake | undefined>;
   createIntake(intake: InsertIntake): Promise<Intake>;
   deleteIntake(id: string): Promise<void>;
@@ -74,9 +104,147 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
+  // Patients
+  async getPatientByDeviceId(deviceId: string): Promise<Patient | undefined> {
+    const [patient] = await db.select().from(patients).where(eq(patients.deviceId, deviceId));
+    return patient || undefined;
+  }
+
+  async createPatient(patient: InsertPatient): Promise<Patient> {
+    const [created] = await db.insert(patients).values(patient).returning();
+    return created;
+  }
+
+  async getOrCreatePatient(deviceId: string): Promise<Patient> {
+    let patient = await this.getPatientByDeviceId(deviceId);
+    if (!patient) {
+      patient = await this.createPatient({ deviceId });
+    }
+    return patient;
+  }
+
+  // Prescriptions
+  async getPrescriptionsByPatientId(patientId: string): Promise<Prescription[]> {
+    return db.select().from(prescriptions)
+      .where(eq(prescriptions.patientId, patientId))
+      .orderBy(desc(prescriptions.createdAt));
+  }
+
+  async getPrescriptionsBySymptom(patientId: string, chiefComplaint: string): Promise<PrescriptionWithMedications[]> {
+    const prescriptionList = await db.select().from(prescriptions)
+      .where(and(
+        eq(prescriptions.patientId, patientId),
+        eq(prescriptions.chiefComplaint, chiefComplaint)
+      ))
+      .orderBy(desc(prescriptions.createdAt));
+
+    const results: PrescriptionWithMedications[] = [];
+    for (const prescription of prescriptionList) {
+      const meds = await this.getPrescriptionMedications(prescription.id);
+      results.push({ prescription, medications: meds });
+    }
+    return results;
+  }
+
+  async createPrescription(prescription: InsertPrescription): Promise<Prescription> {
+    const [created] = await db.insert(prescriptions).values(prescription).returning();
+    return created;
+  }
+
+  // Prescription Medications
+  async getPrescriptionMedications(prescriptionId: string): Promise<PrescriptionMedication[]> {
+    return db.select().from(prescriptionMedications)
+      .where(eq(prescriptionMedications.prescriptionId, prescriptionId));
+  }
+
+  async createPrescriptionMedication(medication: InsertPrescriptionMedication): Promise<PrescriptionMedication> {
+    const [created] = await db.insert(prescriptionMedications).values(medication).returning();
+    return created;
+  }
+
+  // Symptom History & Statistics
+  async getSymptomHistory(patientId: string, chiefComplaint: string): Promise<SymptomHistory | null> {
+    const prescriptionList = await this.getPrescriptionsBySymptom(patientId, chiefComplaint);
+    
+    if (prescriptionList.length === 0) {
+      return null;
+    }
+
+    const dates = prescriptionList
+      .map(p => p.prescription.prescriptionDate || p.prescription.createdAt.toISOString().split('T')[0])
+      .filter(Boolean)
+      .sort();
+
+    const medicationStats = await this.getMedicationStatsBySymptom(patientId, chiefComplaint);
+
+    return {
+      chiefComplaint,
+      totalVisits: prescriptionList.length,
+      firstVisitDate: dates[0] || null,
+      lastVisitDate: dates[dates.length - 1] || null,
+      prescriptions: prescriptionList,
+      medicationStats,
+    };
+  }
+
+  async getMedicationStatsBySymptom(patientId: string, chiefComplaint: string): Promise<MedicationStats[]> {
+    const prescriptionList = await this.getPrescriptionsBySymptom(patientId, chiefComplaint);
+    
+    const medicationMap = new Map<string, {
+      totalCount: number;
+      confidenceSum: number;
+      lastDate: string | null;
+      doses: Set<string>;
+      frequencies: Set<string>;
+    }>();
+
+    for (const { prescription, medications: meds } of prescriptionList) {
+      for (const med of meds) {
+        const existing = medicationMap.get(med.medicationName) || {
+          totalCount: 0,
+          confidenceSum: 0,
+          lastDate: null,
+          doses: new Set<string>(),
+          frequencies: new Set<string>(),
+        };
+
+        existing.totalCount += 1;
+        existing.confidenceSum += med.confidence || 80;
+        
+        const prescDate = prescription.prescriptionDate || prescription.createdAt.toISOString().split('T')[0];
+        if (!existing.lastDate || prescDate > existing.lastDate) {
+          existing.lastDate = prescDate;
+        }
+        
+        if (med.dose) existing.doses.add(med.dose);
+        if (med.frequency) existing.frequencies.add(med.frequency);
+
+        medicationMap.set(med.medicationName, existing);
+      }
+    }
+
+    return Array.from(medicationMap.entries()).map(([name, data]) => ({
+      medicationName: name,
+      totalCount: data.totalCount,
+      avgConfidence: Math.round(data.confidenceSum / data.totalCount),
+      lastPrescribedDate: data.lastDate,
+      doses: Array.from(data.doses),
+      frequencies: Array.from(data.frequencies),
+    })).sort((a, b) => b.totalCount - a.totalCount);
+  }
+
   // Intakes
   async getIntakes(): Promise<Intake[]> {
     return db.select().from(intakes).where(eq(intakes.isDeleted, false)).orderBy(desc(intakes.createdAt));
+  }
+
+  async getIntakesByPatientId(patientId: string): Promise<Intake[]> {
+    return db.select().from(intakes)
+      .where(and(
+        eq(intakes.patientId, patientId),
+        eq(intakes.isDeleted, false)
+      ))
+      .orderBy(desc(intakes.createdAt));
   }
 
   async getIntake(id: string): Promise<Intake | undefined> {
