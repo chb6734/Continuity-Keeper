@@ -748,6 +748,38 @@ export async function registerRoutes(
     }
   });
 
+  // 처방 기록 수정 API
+  app.patch("/api/prescriptions/:id", isAuthenticated, async (req: any, res: Response) => {
+    try {
+      const userId = req.user.claims.sub;
+      const patient = await storage.getPatientByUserId(userId);
+      if (!patient) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const prescription = await storage.getPrescription(req.params.id);
+      if (!prescription) {
+        return res.status(404).json({ error: "Prescription not found" });
+      }
+      if (prescription.patientId !== patient.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const { hospitalName, prescriptionDate, dispensingDate, chiefComplaint } = req.body;
+      const updated = await storage.updatePrescription(req.params.id, {
+        hospitalName,
+        prescriptionDate,
+        dispensingDate,
+        chiefComplaint,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Failed to update prescription:", error);
+      res.status(500).json({ error: "Failed to update prescription" });
+    }
+  });
+
   // 접수가 의료진에 의해 조회되었을 때 알림 생성 (view API 수정)
   app.get("/api/view/:token", async (req: Request, res: Response) => {
     try {

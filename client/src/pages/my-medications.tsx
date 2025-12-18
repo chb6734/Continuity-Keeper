@@ -16,6 +16,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { 
   Pill, 
   Calendar, 
@@ -26,7 +36,8 @@ import {
   Building2,
   FileText,
   Trash2,
-  Loader2
+  Loader2,
+  Pencil
 } from "lucide-react";
 import { type PrescriptionWithMedications } from "@shared/schema";
 import { format } from "date-fns";
@@ -34,11 +45,26 @@ import { ko } from "date-fns/locale";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+interface EditFormData {
+  hospitalName: string;
+  prescriptionDate: string;
+  dispensingDate: string;
+  chiefComplaint: string;
+}
+
 export default function MyMedications() {
   const [, navigate] = useLocation();
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [prescriptionToDelete, setPrescriptionToDelete] = useState<string | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [prescriptionToEdit, setPrescriptionToEdit] = useState<string | null>(null);
+  const [editFormData, setEditFormData] = useState<EditFormData>({
+    hospitalName: "",
+    prescriptionDate: "",
+    dispensingDate: "",
+    chiefComplaint: "",
+  });
   const { toast } = useToast();
 
   const { data: prescriptions = [], isLoading } = useQuery<PrescriptionWithMedications[]>({
@@ -74,15 +100,66 @@ export default function MyMedications() {
     },
   });
 
+  const editMutation = useMutation({
+    mutationFn: async ({ prescriptionId, data }: { prescriptionId: string; data: EditFormData }) => {
+      const response = await fetch(`/api/prescriptions/${prescriptionId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("수정에 실패했습니다");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/prescriptions-with-meds"] });
+      toast({
+        title: "수정 완료",
+        description: "처방 기록이 수정되었습니다.",
+      });
+      setEditDialogOpen(false);
+      setPrescriptionToEdit(null);
+    },
+    onError: (error) => {
+      toast({
+        title: "오류",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleDeleteClick = (e: React.MouseEvent, prescriptionId: string) => {
     e.stopPropagation();
     setPrescriptionToDelete(prescriptionId);
     setDeleteDialogOpen(true);
   };
 
+  const handleEditClick = (e: React.MouseEvent, item: PrescriptionWithMedications) => {
+    e.stopPropagation();
+    setPrescriptionToEdit(item.prescription.id);
+    setEditFormData({
+      hospitalName: item.prescription.hospitalName || "",
+      prescriptionDate: item.prescription.prescriptionDate || "",
+      dispensingDate: item.prescription.dispensingDate || "",
+      chiefComplaint: item.prescription.chiefComplaint || "",
+    });
+    setEditDialogOpen(true);
+  };
+
   const confirmDelete = () => {
     if (prescriptionToDelete) {
       deleteMutation.mutate(prescriptionToDelete);
+    }
+  };
+
+  const confirmEdit = () => {
+    if (prescriptionToEdit) {
+      editMutation.mutate({ prescriptionId: prescriptionToEdit, data: editFormData });
     }
   };
 
@@ -225,8 +302,8 @@ export default function MyMedications() {
                         key={item.prescription.id}
                         className="border rounded-md overflow-hidden"
                       >
-                        <button
-                          className="w-full p-3 flex items-center justify-between gap-2 text-left hover-elevate"
+                        <div
+                          className="w-full p-3 flex items-center justify-between gap-2 text-left hover-elevate cursor-pointer"
                           onClick={() => toggleExpand(item.prescription.id)}
                           data-testid={`button-expand-prescription-${item.prescription.id}`}
                         >
@@ -238,7 +315,7 @@ export default function MyMedications() {
                               <p className="font-medium truncate">
                                 {item.prescription.hospitalName || "병원 미상"}
                               </p>
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                                 {item.prescription.prescriptionDate && (
                                   <span>
                                     {format(
@@ -256,10 +333,19 @@ export default function MyMedications() {
                               </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
+                          <div className="flex items-center gap-1 flex-shrink-0">
                             <Badge variant="secondary" className="text-xs">
                               {item.medications.length}개 약물
                             </Badge>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={(e) => handleEditClick(e, item)}
+                              data-testid={`button-edit-prescription-${item.prescription.id}`}
+                              className="text-muted-foreground"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
                             <Button
                               size="icon"
                               variant="ghost"
@@ -275,7 +361,7 @@ export default function MyMedications() {
                               <ChevronDown className="h-4 w-4 text-muted-foreground" />
                             )}
                           </div>
-                        </button>
+                        </div>
 
                         {isExpanded && item.medications.length > 0 && (
                           <div className="border-t bg-muted/30 p-3 space-y-2">
@@ -346,6 +432,82 @@ export default function MyMedications() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>처방 기록 수정</DialogTitle>
+            <DialogDescription>
+              처방 정보를 수정할 수 있습니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="hospitalName">병원/약국 이름</Label>
+              <Input
+                id="hospitalName"
+                value={editFormData.hospitalName}
+                onChange={(e) => setEditFormData({ ...editFormData, hospitalName: e.target.value })}
+                placeholder="병원 또는 약국 이름"
+                data-testid="input-edit-hospital-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="prescriptionDate">처방일</Label>
+              <Input
+                id="prescriptionDate"
+                type="date"
+                value={editFormData.prescriptionDate}
+                onChange={(e) => setEditFormData({ ...editFormData, prescriptionDate: e.target.value })}
+                data-testid="input-edit-prescription-date"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="dispensingDate">조제일</Label>
+              <Input
+                id="dispensingDate"
+                type="date"
+                value={editFormData.dispensingDate}
+                onChange={(e) => setEditFormData({ ...editFormData, dispensingDate: e.target.value })}
+                data-testid="input-edit-dispensing-date"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="chiefComplaint">주호소 (증상)</Label>
+              <Input
+                id="chiefComplaint"
+                value={editFormData.chiefComplaint}
+                onChange={(e) => setEditFormData({ ...editFormData, chiefComplaint: e.target.value })}
+                placeholder="두통, 감기 등"
+                data-testid="input-edit-chief-complaint"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setEditDialogOpen(false)}
+              data-testid="button-cancel-edit"
+            >
+              취소
+            </Button>
+            <Button 
+              onClick={confirmEdit}
+              disabled={editMutation.isPending}
+              data-testid="button-confirm-edit"
+            >
+              {editMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  저장 중...
+                </>
+              ) : (
+                "저장"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
