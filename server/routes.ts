@@ -780,6 +780,56 @@ export async function registerRoutes(
     }
   });
 
+  // 빠른 처방 기록 API (접수 없이 직접 처방전 업로드)
+  app.post("/api/prescriptions/quick-upload", isAuthenticated, upload.single("documents"), async (req: any, res: Response) => {
+    try {
+      const userId = req.user.claims.sub;
+      const patient = await storage.getOrCreatePatient(userId);
+      const file = req.file as Express.Multer.File;
+
+      if (!file) {
+        return res.status(400).json({ error: "파일을 선택해주세요" });
+      }
+
+      const { hospitalName, chiefComplaint, prescriptionDate } = req.body;
+
+      const ocrResult = await extractMedicationsFromImage(file.buffer, file.mimetype);
+
+      const prescription = await storage.createPrescription({
+        patientId: patient.id,
+        chiefComplaint: chiefComplaint || null,
+        hospitalName: hospitalName || null,
+        prescriptionDate: prescriptionDate || ocrResult.medications[0]?.prescriptionDate || null,
+        dispensingDate: ocrResult.medications[0]?.dispensingDate || null,
+        rawOcrText: ocrResult.rawText,
+      });
+
+      for (const med of ocrResult.medications) {
+        await storage.createPrescriptionMedication({
+          prescriptionId: prescription.id,
+          medicationName: med.medicationName,
+          dose: med.dose,
+          frequency: med.frequency,
+          duration: med.duration,
+          confidence: med.confidence,
+          needsVerification: med.confidence < 80,
+          ingredients: null,
+          indication: null,
+          dosesPerDay: null,
+          totalDoses: null,
+        });
+      }
+
+      res.json({ 
+        prescription, 
+        medicationCount: ocrResult.medications.length 
+      });
+    } catch (error) {
+      console.error("Failed to quick upload prescription:", error);
+      res.status(500).json({ error: "처방전 분석에 실패했습니다" });
+    }
+  });
+
   // 접수가 의료진에 의해 조회되었을 때 알림 생성 (view API 수정)
   app.get("/api/view/:token", async (req: Request, res: Response) => {
     try {
