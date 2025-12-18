@@ -149,9 +149,9 @@ export function OcrVerificationModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden flex flex-col lg:flex-row gap-4">
-          <div className="lg:w-1/2 flex flex-col">
-            <div className="flex items-center justify-between mb-2">
+        <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[400px]">
+          <div className="flex flex-col min-h-0">
+            <div className="flex items-center justify-between mb-2 flex-shrink-0">
               <span className="text-sm font-medium">{currentResult.fileName}</span>
               {hasMultipleResults && (
                 <div className="flex items-center gap-2">
@@ -179,18 +179,18 @@ export function OcrVerificationModal({
                 </div>
               )}
             </div>
-            <div className="flex-1 rounded-md border overflow-hidden bg-muted/50">
+            <div className="flex-1 rounded-md border overflow-auto bg-muted/50 min-h-[300px]">
               <img
                 src={currentResult.imageUrl}
                 alt={currentResult.fileName}
-                className="w-full h-full object-contain"
+                className="w-full h-auto object-contain"
                 data-testid="img-prescription"
               />
             </div>
           </div>
 
-          <div className="lg:w-1/2 flex flex-col min-h-0">
-            <div className="flex items-center justify-between mb-2">
+          <div className="flex flex-col min-h-0 overflow-hidden">
+            <div className="flex items-center justify-between mb-2 flex-shrink-0">
               <span className="text-sm font-medium">
                 추출된 약물 ({currentResult.medications.length}개)
               </span>
@@ -203,7 +203,7 @@ export function OcrVerificationModal({
                 약물 추가
               </Button>
             </div>
-            <ScrollArea className="flex-1 pr-4">
+            <ScrollArea className="flex-1 min-h-0">
               <div className="space-y-3">
                 {currentResult.medications.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
