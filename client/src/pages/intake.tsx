@@ -5,6 +5,7 @@ import { Header } from "@/components/header";
 import { ProgressSteps } from "@/components/progress-steps";
 import { DocumentUpload } from "@/components/document-upload";
 import { SymptomHistoryCard } from "@/components/symptom-history-card";
+import { PrescriptionLoader } from "@/components/prescription-loader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -19,10 +22,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, ArrowRight, FileImage, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileImage, Loader2, FolderOpen, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { CHIEF_COMPLAINTS, COURSE_STATUS, ADHERENCE_OPTIONS } from "@shared/schema";
+import { CHIEF_COMPLAINTS, COURSE_STATUS, ADHERENCE_OPTIONS, type PrescriptionWithMedications } from "@shared/schema";
 
 const STEPS = ["문서 업로드", "주호소", "경과", "복약", "부작용", "확인"];
 
@@ -66,6 +69,8 @@ export default function IntakePage() {
   const [currentStep, setCurrentStep] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [isProcessingOcr, setIsProcessingOcr] = useState(false);
+  const [documentTab, setDocumentTab] = useState<"upload" | "existing">("upload");
+  const [selectedPrescriptions, setSelectedPrescriptions] = useState<PrescriptionWithMedications[]>([]);
 
   const [formData, setFormData] = useState<IntakeFormData>({
     hospitalId,
@@ -102,6 +107,11 @@ export default function IntakePage() {
       uploadedFiles.forEach((file) => {
         formDataObj.append(`documents`, file);
       });
+      
+      if (selectedPrescriptions.length > 0) {
+        const prescriptionIds = selectedPrescriptions.map((p) => p.prescription.id);
+        formDataObj.append("existingPrescriptionIds", JSON.stringify(prescriptionIds));
+      }
 
       const response = await fetch("/api/intakes", {
         method: "POST",
@@ -179,20 +189,60 @@ export default function IntakePage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileImage className="h-5 w-5" />
-                문서 업로드 (선택)
+                처방전 정보 (선택)
               </CardTitle>
               <CardDescription>
-                처방전이나 조제기록 사진을 업로드하면 약물 정보를 자동으로 추출합니다
+                새 처방전을 업로드하거나, 이전에 저장한 처방 기록을 불러올 수 있습니다
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <DocumentUpload
-                onFilesSelected={setUploadedFiles}
-                isProcessing={isProcessingOcr}
-              />
-              <p className="text-sm text-muted-foreground mt-4 text-center">
-                * 사진은 정보 추출 후 즉시 삭제되며 저장되지 않습니다
-              </p>
+            <CardContent className="space-y-4">
+              <Tabs value={documentTab} onValueChange={(v) => setDocumentTab(v as "upload" | "existing")}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="upload" className="gap-2" data-testid="tab-upload-new">
+                    <Upload className="h-4 w-4" />
+                    새 문서 업로드
+                  </TabsTrigger>
+                  <TabsTrigger value="existing" className="gap-2" data-testid="tab-load-existing">
+                    <FolderOpen className="h-4 w-4" />
+                    이전 처방 불러오기
+                  </TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="upload" className="mt-4">
+                  <DocumentUpload
+                    onFilesSelected={setUploadedFiles}
+                    isProcessing={isProcessingOcr}
+                  />
+                  <p className="text-sm text-muted-foreground mt-4 text-center">
+                    * 사진은 정보 추출 후 즉시 삭제되며 저장되지 않습니다
+                  </p>
+                </TabsContent>
+                
+                <TabsContent value="existing" className="mt-4">
+                  <PrescriptionLoader
+                    deviceId={deviceId}
+                    onPrescriptionsSelected={setSelectedPrescriptions}
+                    selectedPrescriptionIds={selectedPrescriptions.map((p) => p.prescription.id)}
+                  />
+                </TabsContent>
+              </Tabs>
+              
+              {(uploadedFiles.length > 0 || selectedPrescriptions.length > 0) && (
+                <>
+                  <Separator />
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">선택된 처방 정보:</span>
+                    <div className="flex items-center gap-2">
+                      {uploadedFiles.length > 0 && (
+                        <span className="text-primary">새 문서 {uploadedFiles.length}개</span>
+                      )}
+                      {selectedPrescriptions.length > 0 && (
+                        <span className="text-primary">이전 처방 {selectedPrescriptions.length}개</span>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         );

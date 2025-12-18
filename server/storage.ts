@@ -10,6 +10,7 @@ import {
   prescriptionMedications,
   notifications,
   notificationSettings,
+  adherenceLogs,
   type Hospital, 
   type InsertHospital,
   type Intake, 
@@ -32,10 +33,13 @@ import {
   type InsertNotification,
   type NotificationSettings,
   type InsertNotificationSettings,
+  type AdherenceLog,
+  type InsertAdherenceLog,
   type IntakeSummary,
   type PrescriptionWithMedications,
   type MedicationStats,
-  type SymptomHistory
+  type SymptomHistory,
+  type AdherenceSummary
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gt, sql } from "drizzle-orm";
@@ -99,6 +103,15 @@ export interface IStorage {
   // Notification Settings
   getNotificationSettings(patientId: string): Promise<NotificationSettings | undefined>;
   createOrUpdateNotificationSettings(patientId: string, settings: Partial<InsertNotificationSettings>): Promise<NotificationSettings>;
+  
+  // Adherence Logs
+  getAdherenceLogsByPatientId(patientId: string): Promise<AdherenceLog[]>;
+  getAdherenceLogsByMedicationId(medicationId: string): Promise<AdherenceLog[]>;
+  createAdherenceLog(log: InsertAdherenceLog): Promise<AdherenceLog>;
+  getAdherenceSummary(patientId: string): Promise<AdherenceSummary>;
+  
+  // Prescriptions with Medications (full)
+  getPrescriptionsWithMedications(patientId: string): Promise<PrescriptionWithMedications[]>;
   
   // Full Summary
   getIntakeSummary(intakeId: string): Promise<IntakeSummary | undefined>;
@@ -429,6 +442,60 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return created;
     }
+  }
+
+  // Adherence Logs
+  async getAdherenceLogsByPatientId(patientId: string): Promise<AdherenceLog[]> {
+    return db.select().from(adherenceLogs)
+      .where(eq(adherenceLogs.patientId, patientId))
+      .orderBy(desc(adherenceLogs.scheduledTime));
+  }
+
+  async getAdherenceLogsByMedicationId(medicationId: string): Promise<AdherenceLog[]> {
+    return db.select().from(adherenceLogs)
+      .where(eq(adherenceLogs.medicationId, medicationId))
+      .orderBy(desc(adherenceLogs.scheduledTime));
+  }
+
+  async createAdherenceLog(log: InsertAdherenceLog): Promise<AdherenceLog> {
+    const [created] = await db.insert(adherenceLogs).values(log).returning();
+    return created;
+  }
+
+  async getAdherenceSummary(patientId: string): Promise<AdherenceSummary> {
+    const logs = await this.getAdherenceLogsByPatientId(patientId);
+    
+    const takenCount = logs.filter(l => l.status === "taken").length;
+    const missedCount = logs.filter(l => l.status === "missed").length;
+    const skippedCount = logs.filter(l => l.status === "skipped").length;
+    const totalScheduled = logs.length;
+    const adherenceRate = totalScheduled > 0 ? Math.round((takenCount / totalScheduled) * 100) : 100;
+    
+    return {
+      totalScheduled,
+      takenCount,
+      missedCount,
+      skippedCount,
+      adherenceRate,
+      recentLogs: logs.slice(0, 10),
+    };
+  }
+
+  // Prescriptions with Medications (full)
+  async getPrescriptionsWithMedications(patientId: string): Promise<PrescriptionWithMedications[]> {
+    const patientPrescriptions = await db.select().from(prescriptions)
+      .where(eq(prescriptions.patientId, patientId))
+      .orderBy(desc(prescriptions.prescriptionDate));
+    
+    const result: PrescriptionWithMedications[] = [];
+    
+    for (const prescription of patientPrescriptions) {
+      const meds = await db.select().from(prescriptionMedications)
+        .where(eq(prescriptionMedications.prescriptionId, prescription.id));
+      result.push({ prescription, medications: meds });
+    }
+    
+    return result;
   }
 }
 

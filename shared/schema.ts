@@ -61,6 +61,7 @@ export const prescriptionMedications = pgTable("prescription_medications", {
   indication: text("indication"), // 적응증/처방 목적
   startDate: text("start_date"), // 복용 시작일
   endDate: text("end_date"), // 복용 종료일
+  dosesPerDay: integer("doses_per_day"), // 1일 복용 횟수
   totalDoses: integer("total_doses"), // 총 복용 횟수
 });
 

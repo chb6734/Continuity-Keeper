@@ -252,11 +252,48 @@ export async function registerRoutes(
               needsVerification: med.confidence < 70,
               rawOcrText: med.rawOcrText,
               sourceType: "prescription",
+              ingredients: med.ingredients,
+              indication: med.indication,
+              dosesPerDay: med.dosesPerDay,
+              totalDoses: med.totalDoses,
             });
             allMedications.push(medication);
           }
         } catch (ocrError) {
           console.error("OCR failed for file:", ocrError);
+        }
+      }
+      
+      if (req.body.existingPrescriptionIds) {
+        try {
+          const prescriptionIds = JSON.parse(req.body.existingPrescriptionIds);
+          
+          for (const prescriptionId of prescriptionIds) {
+            const prescriptionMeds = await storage.getPrescriptionMedications(prescriptionId);
+            
+            for (const pMed of prescriptionMeds) {
+              const medication = await storage.createMedication({
+                intakeId: intake.id,
+                medicationName: pMed.medicationName,
+                dose: pMed.dose,
+                frequency: pMed.frequency,
+                duration: pMed.duration,
+                prescriptionDate: null,
+                dispensingDate: null,
+                confidence: pMed.confidence,
+                needsVerification: pMed.needsVerification,
+                rawOcrText: null,
+                sourceType: "existing_prescription",
+                ingredients: pMed.ingredients,
+                indication: pMed.indication,
+                dosesPerDay: pMed.dosesPerDay,
+                totalDoses: pMed.totalDoses,
+              });
+              allMedications.push(medication);
+            }
+          }
+        } catch (parseError) {
+          console.error("Failed to parse existing prescription IDs:", parseError);
         }
       }
 
@@ -464,6 +501,91 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to update notification settings:", error);
       res.status(500).json({ error: "Failed to update notification settings" });
+    }
+  });
+
+  // ==================== 복약 순응도 API ====================
+  app.get("/api/adherence/:deviceId", async (req: Request, res: Response) => {
+    try {
+      const patient = await storage.getPatientByDeviceId(req.params.deviceId);
+      if (!patient) {
+        return res.json({ 
+          totalScheduled: 0, 
+          takenCount: 0, 
+          missedCount: 0, 
+          skippedCount: 0, 
+          adherenceRate: 100, 
+          recentLogs: [] 
+        });
+      }
+
+      const summary = await storage.getAdherenceSummary(patient.id);
+      res.json(summary);
+    } catch (error) {
+      console.error("Failed to get adherence summary:", error);
+      res.status(500).json({ error: "Failed to get adherence summary" });
+    }
+  });
+
+  app.get("/api/adherence/:deviceId/logs", async (req: Request, res: Response) => {
+    try {
+      const patient = await storage.getPatientByDeviceId(req.params.deviceId);
+      if (!patient) {
+        return res.json([]);
+      }
+
+      const logs = await storage.getAdherenceLogsByPatientId(patient.id);
+      res.json(logs);
+    } catch (error) {
+      console.error("Failed to get adherence logs:", error);
+      res.status(500).json({ error: "Failed to get adherence logs" });
+    }
+  });
+
+  app.post("/api/adherence/:deviceId/log", async (req: Request, res: Response) => {
+    try {
+      const patient = await storage.getPatientByDeviceId(req.params.deviceId);
+      if (!patient) {
+        return res.status(404).json({ error: "Patient not found" });
+      }
+
+      const { medicationId, prescriptionMedicationId, medicationName, scheduledTime, status, takenAt, note } = req.body;
+      
+      if (!medicationName) {
+        return res.status(400).json({ error: "medicationName is required" });
+      }
+      
+      const log = await storage.createAdherenceLog({
+        patientId: patient.id,
+        medicationId: medicationId || null,
+        prescriptionMedicationId: prescriptionMedicationId || null,
+        medicationName,
+        scheduledTime: scheduledTime ? new Date(scheduledTime) : new Date(),
+        status: status || "taken",
+        takenAt: takenAt ? new Date(takenAt) : null,
+        note: note || null,
+      });
+
+      res.json(log);
+    } catch (error) {
+      console.error("Failed to create adherence log:", error);
+      res.status(500).json({ error: "Failed to create adherence log" });
+    }
+  });
+
+  // ==================== 처방 전체 조회 (약물 포함) API ====================
+  app.get("/api/prescriptions-with-meds/:deviceId", async (req: Request, res: Response) => {
+    try {
+      const patient = await storage.getPatientByDeviceId(req.params.deviceId);
+      if (!patient) {
+        return res.json([]);
+      }
+
+      const prescriptions = await storage.getPrescriptionsWithMedications(patient.id);
+      res.json(prescriptions);
+    } catch (error) {
+      console.error("Failed to get prescriptions with medications:", error);
+      res.status(500).json({ error: "Failed to get prescriptions with medications" });
     }
   });
 
