@@ -56,6 +56,12 @@ export const prescriptionMedications = pgTable("prescription_medications", {
   duration: text("duration"),
   confidence: integer("confidence").default(80),
   needsVerification: boolean("needs_verification").default(false),
+  // 확장 필드
+  ingredients: text("ingredients"), // 약물 성분
+  indication: text("indication"), // 적응증/처방 목적
+  startDate: text("start_date"), // 복용 시작일
+  endDate: text("end_date"), // 복용 종료일
+  totalDoses: integer("total_doses"), // 총 복용 횟수
 });
 
 export const insertPrescriptionMedicationSchema = createInsertSchema(prescriptionMedications).omit({ id: true });
@@ -106,7 +112,7 @@ export const insertIntakeSchema = createInsertSchema(intakes).omit({
 export type InsertIntake = z.infer<typeof insertIntakeSchema>;
 export type Intake = typeof intakes.$inferSelect;
 
-// OCR 추출 약물 정보 (접수 시 업로드 - 레거시, 유지)
+// OCR 추출 약물 정보 (접수 시 업로드)
 export const medications = pgTable("medications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   intakeId: varchar("intake_id").notNull(),
@@ -120,11 +126,39 @@ export const medications = pgTable("medications", {
   needsVerification: boolean("needs_verification").default(false),
   rawOcrText: text("raw_ocr_text"),
   sourceType: text("source_type").notNull(),
+  // 확장 필드
+  ingredients: text("ingredients"), // 약물 성분
+  indication: text("indication"), // 적응증/처방 목적
+  startDate: text("start_date"), // 복용 시작일
+  endDate: text("end_date"), // 복용 종료일
+  totalDoses: integer("total_doses"), // 총 복용 횟수
+  dosesPerDay: integer("doses_per_day"), // 1일 복용 횟수
+});
+
+// 복약 순응도 로그 테이블 (환자의 실제 복용 기록)
+export const adherenceLogs = pgTable("adherence_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  patientId: varchar("patient_id").notNull(),
+  medicationId: varchar("medication_id"), // medications 테이블 참조 (선택)
+  prescriptionMedicationId: varchar("prescription_medication_id"), // prescriptionMedications 참조 (선택)
+  medicationName: text("medication_name").notNull(),
+  scheduledTime: timestamp("scheduled_time").notNull(), // 예정 복용 시간
+  takenAt: timestamp("taken_at"), // 실제 복용 시간
+  status: text("status").notNull().default("pending"), // pending, taken, missed, skipped
+  note: text("note"), // 환자 메모
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const insertMedicationSchema = createInsertSchema(medications).omit({ id: true });
 export type InsertMedication = z.infer<typeof insertMedicationSchema>;
 export type Medication = typeof medications.$inferSelect;
+
+export const insertAdherenceLogSchema = createInsertSchema(adherenceLogs).omit({ 
+  id: true, 
+  createdAt: true 
+});
+export type InsertAdherenceLog = z.infer<typeof insertAdherenceLogSchema>;
+export type AdherenceLog = typeof adherenceLogs.$inferSelect;
 
 // 충돌/검증 필요 플래그
 export const verificationFlags = pgTable("verification_flags", {
@@ -285,6 +319,21 @@ export const notificationSettingsRelations = relations(notificationSettings, ({ 
   }),
 }));
 
+export const adherenceLogsRelations = relations(adherenceLogs, ({ one }) => ({
+  patient: one(patients, {
+    fields: [adherenceLogs.patientId],
+    references: [patients.id],
+  }),
+  medication: one(medications, {
+    fields: [adherenceLogs.medicationId],
+    references: [medications.id],
+  }),
+  prescriptionMedication: one(prescriptionMedications, {
+    fields: [adherenceLogs.prescriptionMedicationId],
+    references: [prescriptionMedications.id],
+  }),
+}));
+
 // 전체 요약 데이터 타입 (API 응답용)
 export interface IntakeSummary {
   intake: Intake;
@@ -347,3 +396,30 @@ export const ADHERENCE_OPTIONS = [
   { value: "partial", label: "부분적으로 복용" },
   { value: "no", label: "복용하지 않음" },
 ] as const;
+
+// 복약 순응도 상태 옵션
+export const ADHERENCE_STATUS = [
+  { value: "pending", label: "예정됨" },
+  { value: "taken", label: "복용함" },
+  { value: "missed", label: "놓침" },
+  { value: "skipped", label: "건너뜀" },
+] as const;
+
+// 복약 순응도 요약 (API 응답용)
+export interface AdherenceSummary {
+  totalScheduled: number;
+  takenCount: number;
+  missedCount: number;
+  skippedCount: number;
+  adherenceRate: number; // 0-100
+  recentLogs: AdherenceLog[];
+}
+
+// 환자 전체 히스토리 (의료진 뷰용)
+export interface PatientHistory {
+  patient: Patient;
+  intakes: Intake[];
+  prescriptions: PrescriptionWithMedications[];
+  adherenceSummary: AdherenceSummary;
+  medicationStats: MedicationStats[];
+}
