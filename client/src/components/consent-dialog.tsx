@@ -63,20 +63,20 @@ export function ConsentDialog({ open, onAccept, onDecline }: ConsentDialogProps)
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="flex items-center gap-2 p-3 rounded-md bg-muted w-full text-left hover-elevate"
-                onClick={() => setConsentChecked({ ...consentChecked, dataCollection: !consentChecked.dataCollection })}
+              <div
+                className="flex items-center gap-2 p-3 rounded-md bg-muted w-full cursor-pointer hover-elevate"
+                onClick={() => setConsentChecked((prev) => ({ ...prev, dataCollection: !prev.dataCollection }))}
                 data-testid="checkbox-data-collection"
               >
                 <Checkbox
                   checked={consentChecked.dataCollection}
                   onCheckedChange={(checked) =>
-                    setConsentChecked({ ...consentChecked, dataCollection: !!checked })
+                    setConsentChecked((prev) => ({ ...prev, dataCollection: !!checked }))
                   }
+                  onClick={(e) => e.stopPropagation()}
                 />
                 <span className="text-sm">정보 수집에 동의합니다</span>
-              </button>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -92,20 +92,20 @@ export function ConsentDialog({ open, onAccept, onDecline }: ConsentDialogProps)
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="flex items-center gap-2 p-3 rounded-md bg-muted w-full text-left hover-elevate"
-                onClick={() => setConsentChecked({ ...consentChecked, thirdPartySharing: !consentChecked.thirdPartySharing })}
+              <div
+                className="flex items-center gap-2 p-3 rounded-md bg-muted w-full cursor-pointer hover-elevate"
+                onClick={() => setConsentChecked((prev) => ({ ...prev, thirdPartySharing: !prev.thirdPartySharing }))}
                 data-testid="checkbox-third-party"
               >
                 <Checkbox
                   checked={consentChecked.thirdPartySharing}
                   onCheckedChange={(checked) =>
-                    setConsentChecked({ ...consentChecked, thirdPartySharing: !!checked })
+                    setConsentChecked((prev) => ({ ...prev, thirdPartySharing: !!checked }))
                   }
+                  onClick={(e) => e.stopPropagation()}
                 />
                 <span className="text-sm">의료진에게 정보 제공에 동의합니다</span>
-              </button>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -121,20 +121,20 @@ export function ConsentDialog({ open, onAccept, onDecline }: ConsentDialogProps)
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="flex items-center gap-2 p-3 rounded-md bg-muted w-full text-left hover-elevate"
-                onClick={() => setConsentChecked({ ...consentChecked, dataRetention: !consentChecked.dataRetention })}
+              <div
+                className="flex items-center gap-2 p-3 rounded-md bg-muted w-full cursor-pointer hover-elevate"
+                onClick={() => setConsentChecked((prev) => ({ ...prev, dataRetention: !prev.dataRetention }))}
                 data-testid="checkbox-data-retention"
               >
                 <Checkbox
                   checked={consentChecked.dataRetention}
                   onCheckedChange={(checked) =>
-                    setConsentChecked({ ...consentChecked, dataRetention: !!checked })
+                    setConsentChecked((prev) => ({ ...prev, dataRetention: !!checked }))
                   }
+                  onClick={(e) => e.stopPropagation()}
                 />
                 <span className="text-sm">보관 정책에 동의합니다</span>
-              </button>
+              </div>
             </div>
 
             <div className="rounded-md border p-3 space-y-2">
