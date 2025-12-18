@@ -26,25 +26,24 @@ function Router() {
     );
   }
 
+  if (!isAuthenticated) {
+    return (
+      <Switch>
+        <Route path="/view/:token" component={ClinicianViewPage} />
+        <Route component={Landing} />
+      </Switch>
+    );
+  }
+
   return (
     <Switch>
-      {!isAuthenticated ? (
-        <>
-          <Route path="/" component={Landing} />
-          <Route path="/view/:token" component={ClinicianViewPage} />
-          <Route component={Landing} />
-        </>
-      ) : (
-        <>
-          <Route path="/" component={Home} />
-          <Route path="/intake" component={IntakePage} />
-          <Route path="/share/:id" component={SharePage} />
-          <Route path="/view/:token" component={ClinicianViewPage} />
-          <Route path="/my-intakes" component={MyIntakesPage} />
-          <Route path="/my-medications" component={MyMedicationsPage} />
-          <Route component={NotFound} />
-        </>
-      )}
+      <Route path="/" component={Home} />
+      <Route path="/intake" component={IntakePage} />
+      <Route path="/share/:id" component={SharePage} />
+      <Route path="/view/:token" component={ClinicianViewPage} />
+      <Route path="/my-intakes" component={MyIntakesPage} />
+      <Route path="/my-medications" component={MyMedicationsPage} />
+      <Route component={NotFound} />
     </Switch>
   );
 }
