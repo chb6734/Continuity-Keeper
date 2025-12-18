@@ -1,11 +1,21 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Header } from "@/components/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { 
   Pill, 
   Calendar, 
@@ -14,19 +24,67 @@ import {
   ChevronUp, 
   AlertCircle,
   Building2,
-  FileText 
+  FileText,
+  Trash2,
+  Loader2
 } from "lucide-react";
 import { type PrescriptionWithMedications } from "@shared/schema";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
+import { queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 export default function MyMedications() {
   const [, navigate] = useLocation();
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [prescriptionToDelete, setPrescriptionToDelete] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const { data: prescriptions = [], isLoading } = useQuery<PrescriptionWithMedications[]>({
     queryKey: ["/api/prescriptions-with-meds"],
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (prescriptionId: string) => {
+      const response = await fetch(`/api/prescriptions/${prescriptionId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("삭제에 실패했습니다");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/prescriptions-with-meds"] });
+      toast({
+        title: "삭제 완료",
+        description: "처방 기록이 삭제되었습니다.",
+      });
+      setDeleteDialogOpen(false);
+      setPrescriptionToDelete(null);
+    },
+    onError: (error) => {
+      toast({
+        title: "오류",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDeleteClick = (e: React.MouseEvent, prescriptionId: string) => {
+    e.stopPropagation();
+    setPrescriptionToDelete(prescriptionId);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (prescriptionToDelete) {
+      deleteMutation.mutate(prescriptionToDelete);
+    }
+  };
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) =>
@@ -202,6 +260,15 @@ export default function MyMedications() {
                             <Badge variant="secondary" className="text-xs">
                               {item.medications.length}개 약물
                             </Badge>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={(e) => handleDeleteClick(e, item.prescription.id)}
+                              data-testid={`button-delete-prescription-${item.prescription.id}`}
+                              className="text-muted-foreground"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                             {isExpanded ? (
                               <ChevronUp className="h-4 w-4 text-muted-foreground" />
                             ) : (
@@ -249,6 +316,36 @@ export default function MyMedications() {
           </div>
         )}
       </main>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>처방 기록 삭제</AlertDialogTitle>
+            <AlertDialogDescription>
+              이 처방 기록과 관련된 모든 약물 정보가 삭제됩니다.
+              삭제된 데이터는 복구할 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">취소</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDelete}
+              disabled={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground"
+              data-testid="button-confirm-delete"
+            >
+              {deleteMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  삭제 중...
+                </>
+              ) : (
+                "삭제"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

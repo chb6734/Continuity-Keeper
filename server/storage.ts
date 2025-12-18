@@ -66,6 +66,9 @@ export interface IStorage {
   getPrescriptionsByPatientId(patientId: string): Promise<Prescription[]>;
   getPrescriptionsBySymptom(patientId: string, chiefComplaint: string): Promise<PrescriptionWithMedications[]>;
   createPrescription(prescription: InsertPrescription): Promise<Prescription>;
+  getPrescription(id: string): Promise<Prescription | undefined>;
+  deletePrescription(id: string): Promise<void>;
+  updatePrescription(id: string, data: Partial<InsertPrescription>): Promise<Prescription | undefined>;
   
   // Prescription Medications
   getPrescriptionMedications(prescriptionId: string): Promise<PrescriptionMedication[]>;
@@ -207,6 +210,28 @@ export class DatabaseStorage implements IStorage {
   async createPrescription(prescription: InsertPrescription): Promise<Prescription> {
     const [created] = await db.insert(prescriptions).values(prescription).returning();
     return created;
+  }
+
+  async getPrescription(id: string): Promise<Prescription | undefined> {
+    const [prescription] = await db.select().from(prescriptions).where(eq(prescriptions.id, id));
+    return prescription;
+  }
+
+  async deletePrescription(id: string): Promise<void> {
+    // First delete related medications
+    await db.delete(prescriptionMedications).where(eq(prescriptionMedications.prescriptionId, id));
+    // Then delete the prescription
+    await db.delete(prescriptions).where(eq(prescriptions.id, id));
+  }
+
+  async updatePrescription(id: string, data: Partial<InsertPrescription>): Promise<Prescription | undefined> {
+    // Prevent mutation of immutable fields
+    const { patientId, ...safeData } = data;
+    const [updated] = await db.update(prescriptions)
+      .set(safeData)
+      .where(eq(prescriptions.id, id))
+      .returning();
+    return updated;
   }
 
   // Prescription Medications
