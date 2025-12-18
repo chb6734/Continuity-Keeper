@@ -1,9 +1,10 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Header } from "@/components/header";
 import { HospitalSearch } from "@/components/hospital-search";
 import { MedicationHistoryCard } from "@/components/medication-history-card";
+import { ConsentDialog, useConsentStatus } from "@/components/consent-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -37,6 +38,7 @@ export default function Home() {
   const [quickUploadOpen, setQuickUploadOpen] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showConsentDialog, setShowConsentDialog] = useState(false);
   const [quickFormData, setQuickFormData] = useState({
     hospitalName: "",
     chiefComplaint: "",
@@ -44,6 +46,13 @@ export default function Home() {
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { hasConsented } = useConsentStatus();
+
+  useEffect(() => {
+    if (!hasConsented) {
+      setShowConsentDialog(true);
+    }
+  }, [hasConsented]);
 
   const { data: hospitals = [], isLoading } = useQuery<Hospital[]>({
     queryKey: ["/api/hospitals"],
@@ -325,6 +334,12 @@ export default function Home() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConsentDialog
+        open={showConsentDialog}
+        onAccept={() => setShowConsentDialog(false)}
+        onDecline={() => navigate("/")}
+      />
     </div>
   );
 }
