@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Check, Pencil, X, AlertTriangle, Pill, ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, Pencil, X, AlertTriangle, Pill, ChevronLeft, ChevronRight, FileText, Image } from "lucide-react";
 
 export interface ExtractedMedication {
   id: string;
@@ -29,6 +29,7 @@ export interface OcrResult {
   imageUrl: string;
   fileName: string;
   medications: ExtractedMedication[];
+  rawText?: string;
 }
 
 interface OcrVerificationModalProps {
@@ -48,13 +49,26 @@ export function OcrVerificationModal({
 }: OcrVerificationModalProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [editingMedId, setEditingMedId] = useState<string | null>(null);
+  const [selectedMedId, setSelectedMedId] = useState<string | null>(null);
   const [results, setResults] = useState<OcrResult[]>(ocrResults);
+  const [showRawText, setShowRawText] = useState(false);
 
   useEffect(() => {
     setResults(ocrResults);
     setCurrentIndex(0);
     setEditingMedId(null);
+    setSelectedMedId(null);
   }, [ocrResults]);
+
+  const highlightTextWithMedication = (text: string, medicationName: string) => {
+    if (!medicationName || !text) return text;
+    const parts = text.split(new RegExp(`(${medicationName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
+    return parts.map((part, index) => 
+      part.toLowerCase() === medicationName.toLowerCase() 
+        ? <mark key={index} className="bg-yellow-300 dark:bg-yellow-600 px-0.5 rounded">{part}</mark>
+        : part
+    );
+  };
 
   const currentResult = results[currentIndex];
   const hasMultipleResults = results.length > 1;
@@ -151,42 +165,73 @@ export function OcrVerificationModal({
 
         <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[400px]">
           <div className="flex flex-col min-h-0">
-            <div className="flex items-center justify-between mb-2 flex-shrink-0">
-              <span className="text-sm font-medium">{currentResult.fileName}</span>
-              {hasMultipleResults && (
-                <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between mb-2 flex-shrink-0 gap-2">
+              <span className="text-sm font-medium truncate">{currentResult.fileName}</span>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {currentResult.rawText && (
                   <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={goToPrevious}
-                    disabled={currentIndex === 0}
-                    data-testid="button-prev-image"
+                    variant={showRawText ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowRawText(!showRawText)}
+                    data-testid="button-toggle-raw-text"
                   >
-                    <ChevronLeft className="h-4 w-4" />
+                    {showRawText ? <Image className="h-4 w-4 mr-1" /> : <FileText className="h-4 w-4 mr-1" />}
+                    {showRawText ? "이미지" : "텍스트"}
                   </Button>
-                  <span className="text-sm text-muted-foreground">
-                    {currentIndex + 1} / {results.length}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={goToNext}
-                    disabled={currentIndex === results.length - 1}
-                    data-testid="button-next-image"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
+                )}
+                {hasMultipleResults && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={goToPrevious}
+                      disabled={currentIndex === 0}
+                      data-testid="button-prev-image"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      {currentIndex + 1} / {results.length}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={goToNext}
+                      disabled={currentIndex === results.length - 1}
+                      data-testid="button-next-image"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
             <div className="flex-1 rounded-md border overflow-auto bg-muted/50 min-h-[300px]">
-              <img
-                src={currentResult.imageUrl}
-                alt={currentResult.fileName}
-                className="w-full h-auto object-contain"
-                data-testid="img-prescription"
-              />
+              {showRawText && currentResult.rawText ? (
+                <div className="p-4 text-sm whitespace-pre-wrap font-mono leading-relaxed" data-testid="text-raw-ocr">
+                  {selectedMedId ? (
+                    highlightTextWithMedication(
+                      currentResult.rawText, 
+                      currentResult.medications.find(m => m.id === selectedMedId)?.name || ""
+                    )
+                  ) : (
+                    currentResult.rawText
+                  )}
+                </div>
+              ) : (
+                <img
+                  src={currentResult.imageUrl}
+                  alt={currentResult.fileName}
+                  className="w-full h-auto object-contain"
+                  data-testid="img-prescription"
+                />
+              )}
             </div>
+            {selectedMedId && currentResult.rawText && (
+              <p className="text-xs text-muted-foreground mt-2">
+                선택한 약물명이 원본 텍스트에서 노란색으로 표시됩니다
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col min-h-0 overflow-hidden">
@@ -215,7 +260,22 @@ export function OcrVerificationModal({
                   currentResult.medications.map((med) => (
                     <Card
                       key={med.id}
-                      className={med.confidence < 70 ? "border-amber-500" : ""}
+                      className={`cursor-pointer transition-all ${
+                        selectedMedId === med.id 
+                          ? "ring-2 ring-primary border-primary" 
+                          : med.confidence < 70 
+                            ? "border-amber-500" 
+                            : ""
+                      }`}
+                      onClick={() => {
+                        if (editingMedId !== med.id) {
+                          setSelectedMedId(selectedMedId === med.id ? null : med.id);
+                          if (currentResult.rawText && selectedMedId !== med.id) {
+                            setShowRawText(true);
+                          }
+                        }
+                      }}
+                      data-testid={`card-medication-${med.id}`}
                     >
                       <CardHeader className="py-3 px-4">
                         <div className="flex items-start justify-between gap-2">
@@ -241,7 +301,7 @@ export function OcrVerificationModal({
                               </Badge>
                             )}
                           </CardTitle>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                             {editingMedId === med.id ? (
                               <Button
                                 variant="ghost"
@@ -330,6 +390,11 @@ export function OcrVerificationModal({
                 )}
               </div>
             </ScrollArea>
+            {currentResult.rawText && currentResult.medications.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-2 flex-shrink-0">
+                약물 카드를 클릭하면 원본 텍스트에서 해당 약물명을 확인할 수 있습니다
+              </p>
+            )}
           </div>
         </div>
 

@@ -190,8 +190,12 @@ export default function IntakePage() {
         const data = await response.json();
         
         const medications: ExtractedMedication[] = [];
+        let rawText = "";
         if (data.prescriptions && data.prescriptions.length > 0) {
           for (const prescription of data.prescriptions) {
+            if (prescription.prescription?.rawOcrText) {
+              rawText = prescription.prescription.rawOcrText;
+            }
             for (const med of prescription.medications || []) {
               medications.push({
                 id: med.id || `med-${Date.now()}-${Math.random()}`,
@@ -209,6 +213,7 @@ export default function IntakePage() {
           imageUrl: url,
           fileName: file.name,
           medications,
+          rawText,
         });
       }
 
