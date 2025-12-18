@@ -10,6 +10,8 @@ MedBridge는 환자가 이전 진료 정보를 새로운 의료기관의 의료�
 - **QR 코드 공유**: 10분 제한 일회성 코드로 의료진에게 공유
 - **의료진 요약 뷰**: 투약 타임라인, 환자 입력 정보, 검증 필요 항목 표시
 - **환자 데이터 관리**: 접수 기록 조회 및 삭제
+- **처방 기록 관리**: 접수와 별도로 처방 기록 저장 및 관리
+- **증상별 과거 기록 조회**: 같은 증상으로 과거 진료 받은 기록 확인 및 약물 통계
 
 ## 기술 스택
 - **프론트엔드**: React, TypeScript, Tailwind CSS, Shadcn UI
@@ -30,10 +32,11 @@ MedBridge는 환자가 이전 진료 정보를 새로운 의료기관의 의료�
 │   │   ├── medication-timeline.tsx
 │   │   ├── intake-summary-card.tsx
 │   │   ├── qr-code-display.tsx
+│   │   ├── symptom-history-card.tsx  # 증상별 과거 기록 카드
 │   │   └── ...
 │   ├── pages/
 │   │   ├── home.tsx          # 메인 페이지
-│   │   ├── intake.tsx        # 접수 양식
+│   │   ├── intake.tsx        # 접수 양식 (deviceId로 환자 식별)
 │   │   ├── share.tsx         # QR 코드 공유
 │   │   ├── clinician-view.tsx # 의료진 요약 뷰
 │   │   └── my-intakes.tsx    # 내 접수 기록
@@ -49,9 +52,19 @@ MedBridge는 환자가 이전 진료 정보를 새로운 의료기관의 의료�
 ```
 
 ## API 엔드포인트
+
+### 환자/처방 관리 (신규)
+- `POST /api/patients` - 환자 생성/조회 (deviceId 기반)
+- `GET /api/patients/:deviceId` - deviceId로 환자 조회
+- `POST /api/prescriptions/import` - 처방전 사진 업로드 및 OCR (접수와 분리)
+- `GET /api/prescriptions/:patientId` - 환자별 처방 기록 조회
+- `GET /api/symptom-history/:deviceId/:chiefComplaint` - 증상별 과거 진료 기록
+- `GET /api/medication-stats/:deviceId/:chiefComplaint` - 증상별 약물 통계
+
+### 접수 관리
 - `GET /api/hospitals` - 병원 목록 조회
 - `GET /api/intakes` - 접수 기록 목록
-- `POST /api/intakes` - 새 접수 생성 (multipart/form-data)
+- `POST /api/intakes` - 새 접수 생성 (multipart/form-data, deviceId 포함)
 - `GET /api/intakes/:id` - 접수 상세 조회
 - `DELETE /api/intakes/:id` - 접수 삭제
 - `GET /api/intakes/:id/token` - 접근 토큰 조회/생성
@@ -59,18 +72,32 @@ MedBridge는 환자가 이전 진료 정보를 새로운 의료기관의 의료�
 - `GET /api/view/:token` - 토큰으로 요약 조회 (의료진용)
 
 ## 데이터 모델
+
+### 환자 중심 구조 (신규)
+- **patients**: 환자 정보 (deviceId로 식별)
+- **prescriptions**: 처방 기록 (patientId, chiefComplaint 연결)
+- **prescriptionMedications**: 처방별 약물 정보
+
+### 접수 관련
 - **hospitals**: 병원/의원 정보
-- **intakes**: 환자 접수 정보 (주호소, 경과, 복약, 부작용 등)
-- **medications**: OCR 추출된 약물 정보
+- **intakes**: 환자 접수 정보 (patientId 연결, 주호소, 경과, 복약, 부작용 등)
+- **medications**: OCR 추출된 약물 정보 (intakeId 연결, 레거시)
 - **verificationFlags**: 검증 필요 플래그 (중복, 충돌 등)
 - **accessTokens**: 일회용 접근 토큰 (10분 TTL)
 - **accessLogs**: 접근 로그
+
+## 아키텍처 변경 사항 (2024-12)
+- 처방 기록을 접수(intake)와 분리하여 별도 저장
+- 환자 식별을 위한 deviceId 기반 patients 테이블 추가
+- 증상 선택 시 과거 동일 증상 진료 기록 자동 조회
+- 과거 기록이 있으면 처방받은 약물 통계 표시
 
 ## 보안/개인정보
 - 원본 이미지는 서버에 저장하지 않음 (OCR 후 즉시 삭제)
 - 접근 토큰은 10분 후 자동 만료
 - 토큰 재발급 시 이전 토큰 즉시 무효화
 - 모든 접근 기록 로깅
+- deviceId는 localStorage에 저장 (브라우저별 고유)
 
 ## 사용자 설정
 - 라이트/다크 모드 지원 (localStorage에 저장)

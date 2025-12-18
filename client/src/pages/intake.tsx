@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Header } from "@/components/header";
 import { ProgressSteps } from "@/components/progress-steps";
 import { DocumentUpload } from "@/components/document-upload";
+import { SymptomHistoryCard } from "@/components/symptom-history-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,16 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { CHIEF_COMPLAINTS, COURSE_STATUS, ADHERENCE_OPTIONS } from "@shared/schema";
 
 const STEPS = ["문서 업로드", "주호소", "경과", "복약", "부작용", "확인"];
+
+function getDeviceId(): string {
+  const DEVICE_ID_KEY = "medbridge_device_id";
+  let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+  if (!deviceId) {
+    deviceId = crypto.randomUUID();
+    localStorage.setItem(DEVICE_ID_KEY, deviceId);
+  }
+  return deviceId;
+}
 
 interface IntakeFormData {
   hospitalId: string;
@@ -51,6 +62,7 @@ export default function IntakePage() {
   const hospitalId = params.get("hospitalId") || "";
   const hospitalName = params.get("hospitalName") || "";
 
+  const [deviceId] = useState(() => getDeviceId());
   const [currentStep, setCurrentStep] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [isProcessingOcr, setIsProcessingOcr] = useState(false);
@@ -82,11 +94,12 @@ export default function IntakePage() {
     mutationFn: async () => {
       const formDataObj = new FormData();
       
+      formDataObj.append("deviceId", deviceId);
       Object.entries(formData).forEach(([key, value]) => {
         formDataObj.append(key, String(value));
       });
       
-      uploadedFiles.forEach((file, index) => {
+      uploadedFiles.forEach((file) => {
         formDataObj.append(`documents`, file);
       });
 
@@ -212,6 +225,11 @@ export default function IntakePage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              <SymptomHistoryCard 
+                deviceId={deviceId} 
+                chiefComplaint={formData.chiefComplaint} 
+              />
 
               <div className="space-y-2">
                 <Label htmlFor="chiefComplaintDetail">증상 상세 (선택)</Label>
@@ -444,27 +462,27 @@ export default function IntakePage() {
               <div className="rounded-lg bg-muted p-4 space-y-3">
                 <h4 className="font-medium">접수 요약</h4>
                 <div className="text-sm space-y-2">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-2">
                     <span className="text-muted-foreground">방문 병원</span>
-                    <span className="font-medium">{formData.hospitalName}</span>
+                    <span className="font-medium text-right">{formData.hospitalName}</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-2">
                     <span className="text-muted-foreground">주호소</span>
                     <span className="font-medium">
                       {CHIEF_COMPLAINTS.find(c => c.value === formData.chiefComplaint)?.label}
                     </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-2">
                     <span className="text-muted-foreground">발병 시기</span>
                     <span className="font-medium">{formData.onsetDate}</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-2">
                     <span className="text-muted-foreground">경과</span>
                     <span className="font-medium">
                       {COURSE_STATUS.find(c => c.value === formData.courseStatus)?.label}
                     </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-2">
                     <span className="text-muted-foreground">업로드된 문서</span>
                     <span className="font-medium">{uploadedFiles.length}개</span>
                   </div>
