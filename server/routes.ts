@@ -274,8 +274,8 @@ export async function registerRoutes(
         try {
           const conflicts = await detectConflicts(
             allMedications,
-            intakeData.allergiesDetail,
-            intakeData.adverseEventsDetail
+            intakeData.allergiesDetail ?? null,
+            intakeData.adverseEventsDetail ?? null
           );
 
           for (const conflict of conflicts) {
@@ -379,6 +379,95 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/intakes/:id/logs", async (req: Request, res: Response) => {
+    try {
+      const logs = await storage.getAccessLogsByIntakeId(req.params.id);
+      res.json(logs);
+    } catch (error) {
+      console.error("Failed to get access logs:", error);
+      res.status(500).json({ error: "Failed to get access logs" });
+    }
+  });
+
+  // ==================== 알림 API ====================
+  app.get("/api/notifications/:deviceId", async (req: Request, res: Response) => {
+    try {
+      const patient = await storage.getPatientByDeviceId(req.params.deviceId);
+      if (!patient) {
+        return res.json({ notifications: [], unreadCount: 0 });
+      }
+
+      const [notificationList, unreadCount] = await Promise.all([
+        storage.getNotificationsByPatientId(patient.id),
+        storage.getUnreadNotificationCount(patient.id),
+      ]);
+
+      res.json({ notifications: notificationList, unreadCount });
+    } catch (error) {
+      console.error("Failed to get notifications:", error);
+      res.status(500).json({ error: "Failed to get notifications" });
+    }
+  });
+
+  app.post("/api/notifications/:id/read", async (req: Request, res: Response) => {
+    try {
+      await storage.markNotificationAsRead(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to mark notification as read:", error);
+      res.status(500).json({ error: "Failed to mark notification as read" });
+    }
+  });
+
+  app.post("/api/notifications/:deviceId/read-all", async (req: Request, res: Response) => {
+    try {
+      const patient = await storage.getPatientByDeviceId(req.params.deviceId);
+      if (!patient) {
+        return res.status(404).json({ error: "Patient not found" });
+      }
+      await storage.markAllNotificationsAsRead(patient.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to mark all notifications as read:", error);
+      res.status(500).json({ error: "Failed to mark all notifications as read" });
+    }
+  });
+
+  // ==================== 알림 설정 API ====================
+  app.get("/api/notification-settings/:deviceId", async (req: Request, res: Response) => {
+    try {
+      const patient = await storage.getOrCreatePatient(req.params.deviceId);
+      
+      let settings = await storage.getNotificationSettings(patient.id);
+      
+      if (!settings) {
+        settings = await storage.createOrUpdateNotificationSettings(patient.id, {
+          medicationReminder: true,
+          followUpReminder: true,
+          intakeViewedAlert: true,
+          reminderTime: "09:00",
+        });
+      }
+      
+      res.json(settings);
+    } catch (error) {
+      console.error("Failed to get notification settings:", error);
+      res.status(500).json({ error: "Failed to get notification settings" });
+    }
+  });
+
+  app.post("/api/notification-settings/:deviceId", async (req: Request, res: Response) => {
+    try {
+      const patient = await storage.getOrCreatePatient(req.params.deviceId);
+      const settings = await storage.createOrUpdateNotificationSettings(patient.id, req.body);
+      res.json(settings);
+    } catch (error) {
+      console.error("Failed to update notification settings:", error);
+      res.status(500).json({ error: "Failed to update notification settings" });
+    }
+  });
+
+  // 접수가 의료진에 의해 조회되었을 때 알림 생성 (view API 수정)
   app.get("/api/view/:token", async (req: Request, res: Response) => {
     try {
       const tokenValue = req.params.token;
@@ -399,20 +488,24 @@ export async function registerRoutes(
         action: "view",
       });
 
+      // 환자에게 조회 알림 생성
+      if (summary.intake.patientId) {
+        const settings = await storage.getNotificationSettings(summary.intake.patientId);
+        if (!settings || settings.intakeViewedAlert) {
+          await storage.createNotification({
+            patientId: summary.intake.patientId,
+            type: "intake_viewed",
+            title: "의료진 조회 알림",
+            message: `${summary.intake.hospitalName}에서 접수 정보를 확인했습니다.`,
+            relatedIntakeId: summary.intake.id,
+          });
+        }
+      }
+
       res.json(summary);
     } catch (error) {
       console.error("Failed to view summary:", error);
       res.status(500).json({ error: "Failed to view summary" });
-    }
-  });
-
-  app.get("/api/intakes/:id/logs", async (req: Request, res: Response) => {
-    try {
-      const logs = await storage.getAccessLogsByIntakeId(req.params.id);
-      res.json(logs);
-    } catch (error) {
-      console.error("Failed to get access logs:", error);
-      res.status(500).json({ error: "Failed to get access logs" });
     }
   });
 

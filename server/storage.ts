@@ -8,6 +8,8 @@ import {
   patients,
   prescriptions,
   prescriptionMedications,
+  notifications,
+  notificationSettings,
   type Hospital, 
   type InsertHospital,
   type Intake, 
@@ -26,6 +28,10 @@ import {
   type InsertPrescription,
   type PrescriptionMedication,
   type InsertPrescriptionMedication,
+  type Notification,
+  type InsertNotification,
+  type NotificationSettings,
+  type InsertNotificationSettings,
   type IntakeSummary,
   type PrescriptionWithMedications,
   type MedicationStats,
@@ -82,6 +88,17 @@ export interface IStorage {
   // Access Logs
   getAccessLogsByIntakeId(intakeId: string): Promise<AccessLog[]>;
   createAccessLog(log: InsertAccessLog): Promise<AccessLog>;
+  
+  // Notifications
+  getNotificationsByPatientId(patientId: string): Promise<Notification[]>;
+  getUnreadNotificationCount(patientId: string): Promise<number>;
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  markNotificationAsRead(id: string): Promise<void>;
+  markAllNotificationsAsRead(patientId: string): Promise<void>;
+  
+  // Notification Settings
+  getNotificationSettings(patientId: string): Promise<NotificationSettings | undefined>;
+  createOrUpdateNotificationSettings(patientId: string, settings: Partial<InsertNotificationSettings>): Promise<NotificationSettings>;
   
   // Full Summary
   getIntakeSummary(intakeId: string): Promise<IntakeSummary | undefined>;
@@ -356,6 +373,62 @@ export class DatabaseStorage implements IStorage {
     if (!token) return undefined;
 
     return this.getIntakeSummary(token.intakeId);
+  }
+
+  // Notifications
+  async getNotificationsByPatientId(patientId: string): Promise<Notification[]> {
+    return db.select().from(notifications)
+      .where(eq(notifications.patientId, patientId))
+      .orderBy(desc(notifications.createdAt));
+  }
+
+  async getUnreadNotificationCount(patientId: string): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)::int` })
+      .from(notifications)
+      .where(and(
+        eq(notifications.patientId, patientId),
+        eq(notifications.isRead, false)
+      ));
+    return result[0]?.count || 0;
+  }
+
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const [created] = await db.insert(notifications).values(notification).returning();
+    return created;
+  }
+
+  async markNotificationAsRead(id: string): Promise<void> {
+    await db.update(notifications).set({ isRead: true }).where(eq(notifications.id, id));
+  }
+
+  async markAllNotificationsAsRead(patientId: string): Promise<void> {
+    await db.update(notifications)
+      .set({ isRead: true })
+      .where(eq(notifications.patientId, patientId));
+  }
+
+  // Notification Settings
+  async getNotificationSettings(patientId: string): Promise<NotificationSettings | undefined> {
+    const [settings] = await db.select().from(notificationSettings)
+      .where(eq(notificationSettings.patientId, patientId));
+    return settings || undefined;
+  }
+
+  async createOrUpdateNotificationSettings(patientId: string, settings: Partial<InsertNotificationSettings>): Promise<NotificationSettings> {
+    const existing = await this.getNotificationSettings(patientId);
+    
+    if (existing) {
+      const [updated] = await db.update(notificationSettings)
+        .set(settings)
+        .where(eq(notificationSettings.patientId, patientId))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(notificationSettings)
+        .values({ patientId, ...settings })
+        .returning();
+      return created;
+    }
   }
 }
 

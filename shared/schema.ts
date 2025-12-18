@@ -172,6 +172,41 @@ export const insertAccessLogSchema = createInsertSchema(accessLogs).omit({
 export type InsertAccessLog = z.infer<typeof insertAccessLogSchema>;
 export type AccessLog = typeof accessLogs.$inferSelect;
 
+// 알림 테이블
+export const notifications = pgTable("notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  patientId: varchar("patient_id").notNull(),
+  type: text("type").notNull(), // 'medication_reminder', 'follow_up', 'intake_viewed'
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  relatedIntakeId: varchar("related_intake_id"),
+  isRead: boolean("is_read").default(false),
+  scheduledFor: timestamp("scheduled_for"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ 
+  id: true, 
+  createdAt: true,
+  isRead: true
+});
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type Notification = typeof notifications.$inferSelect;
+
+// 알림 설정 테이블
+export const notificationSettings = pgTable("notification_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  patientId: varchar("patient_id").notNull().unique(),
+  medicationReminder: boolean("medication_reminder").default(true),
+  followUpReminder: boolean("follow_up_reminder").default(true),
+  intakeViewedAlert: boolean("intake_viewed_alert").default(true),
+  reminderTime: text("reminder_time").default("09:00"), // HH:mm format
+});
+
+export const insertNotificationSettingsSchema = createInsertSchema(notificationSettings).omit({ id: true });
+export type InsertNotificationSettings = z.infer<typeof insertNotificationSettingsSchema>;
+export type NotificationSettings = typeof notificationSettings.$inferSelect;
+
 // Relations
 export const patientsRelations = relations(patients, ({ many }) => ({
   prescriptions: many(prescriptions),
@@ -229,6 +264,24 @@ export const accessLogsRelations = relations(accessLogs, ({ one }) => ({
   intake: one(intakes, {
     fields: [accessLogs.intakeId],
     references: [intakes.id],
+  }),
+}));
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  patient: one(patients, {
+    fields: [notifications.patientId],
+    references: [patients.id],
+  }),
+  relatedIntake: one(intakes, {
+    fields: [notifications.relatedIntakeId],
+    references: [intakes.id],
+  }),
+}));
+
+export const notificationSettingsRelations = relations(notificationSettings, ({ one }) => ({
+  patient: one(patients, {
+    fields: [notificationSettings.patientId],
+    references: [patients.id],
   }),
 }));
 

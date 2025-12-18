@@ -1,5 +1,7 @@
 import { Link, useLocation } from "wouter";
+import { useState, useEffect } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { NotificationCenter } from "@/components/notification-center";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Activity } from "lucide-react";
 
@@ -7,10 +9,26 @@ interface HeaderProps {
   title?: string;
   showBack?: boolean;
   backPath?: string;
+  showNotifications?: boolean;
 }
 
-export function Header({ title, showBack = false, backPath = "/" }: HeaderProps) {
+function getOrCreateDeviceId(): string {
+  const key = "medbridge_device_id";
+  let deviceId = localStorage.getItem(key);
+  if (!deviceId) {
+    deviceId = crypto.randomUUID();
+    localStorage.setItem(key, deviceId);
+  }
+  return deviceId;
+}
+
+export function Header({ title, showBack = false, backPath = "/", showNotifications = true }: HeaderProps) {
   const [, navigate] = useLocation();
+  const [deviceId, setDeviceId] = useState<string>("");
+
+  useEffect(() => {
+    setDeviceId(getOrCreateDeviceId());
+  }, []);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -39,6 +57,9 @@ export function Header({ title, showBack = false, backPath = "/" }: HeaderProps)
           )}
         </div>
         <div className="flex items-center gap-2">
+          {showNotifications && deviceId && (
+            <NotificationCenter deviceId={deviceId} />
+          )}
           <ThemeToggle />
         </div>
       </div>

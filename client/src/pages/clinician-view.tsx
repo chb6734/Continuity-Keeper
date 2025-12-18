@@ -2,15 +2,16 @@ import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/header";
 import { MedicationTimeline } from "@/components/medication-timeline";
+import { MedicationAnalysisCard } from "@/components/medication-analysis-card";
 import { IntakeSummaryCard } from "@/components/intake-summary-card";
 import { VerificationFlagsCard } from "@/components/verification-flags-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Building2, Calendar, ShieldAlert, FileX } from "lucide-react";
+import { Building2, Calendar, ShieldAlert, FileX, History, User } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ko } from "date-fns/locale";
-import type { IntakeSummary } from "@shared/schema";
+import type { IntakeSummary, Intake } from "@shared/schema";
 
 export default function ClinicianViewPage() {
   const { token } = useParams<{ token: string }>();
@@ -88,22 +89,38 @@ export default function ClinicianViewPage() {
 
   if (!data) return null;
 
+  const hasWarnings = data.verificationFlags.length > 0 || 
+    data.intake.hasAdverseEvents || 
+    data.intake.hasAllergies;
+
   return (
     <div className="min-h-screen bg-background pb-8">
-      <Header title="진료 요약" />
+      <Header title="진료 요약" showNotifications={false} />
       
       <main className="container max-w-4xl mx-auto px-4 py-6 space-y-6">
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-4 flex-wrap">
-              <CardTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5" />
-                {data.intake.hospitalName}
-              </CardTitle>
-              <Badge variant="outline" className="gap-1">
-                <Calendar className="h-3 w-3" />
-                {format(parseISO(data.intake.createdAt?.toString() || new Date().toISOString()), "yyyy년 M월 d일 HH:mm", { locale: ko })}
-              </Badge>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                  <User className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    {data.intake.hospitalName}
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
+                    <Calendar className="h-3 w-3" />
+                    {format(parseISO(data.intake.createdAt?.toString() || new Date().toISOString()), "yyyy년 M월 d일 HH:mm", { locale: ko })}
+                  </p>
+                </div>
+              </div>
+              {hasWarnings && (
+                <Badge variant="destructive" className="gap-1">
+                  <ShieldAlert className="h-3 w-3" />
+                  주의 필요
+                </Badge>
+              )}
             </div>
           </CardHeader>
         </Card>
@@ -115,10 +132,42 @@ export default function ClinicianViewPage() {
         <IntakeSummaryCard intake={data.intake} />
 
         {data.medications.length > 0 && (
-          <MedicationTimeline medications={data.medications} />
+          <>
+            <MedicationAnalysisCard medications={data.medications} />
+            <MedicationTimeline medications={data.medications} />
+          </>
         )}
 
-        <div className="text-center text-xs text-muted-foreground py-4">
+        {data.accessLogs.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <History className="h-4 w-4" />
+                접근 기록
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {data.accessLogs.slice(0, 5).map((log, index) => (
+                  <div 
+                    key={log.id} 
+                    className="flex items-center justify-between text-sm py-2 border-b last:border-0"
+                    data-testid={`access-log-${index}`}
+                  >
+                    <span className="text-muted-foreground">
+                      {log.action === "view" ? "조회됨" : log.action}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {format(parseISO(log.accessedAt?.toString() || new Date().toISOString()), "M월 d일 HH:mm", { locale: ko })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="text-center text-xs text-muted-foreground py-4 space-y-1">
           <p>이 정보는 환자가 직접 입력했거나 문서에서 OCR로 추출한 것입니다.</p>
           <p>의무기록을 대체하지 않으며, 진료 참고용으로만 사용하세요.</p>
         </div>
