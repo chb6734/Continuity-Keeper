@@ -12,9 +12,13 @@ MedBridge는 환자가 이전 진료 정보를 새로운 의료기관의 의료�
 - **의료진 요약 뷰**: 투약 타임라인, 환자 입력 정보, 검증 필요 항목 표시
 - **환자 데이터 관리**: 접수 기록 조회 및 삭제
 - **처방 기록 관리**: 접수와 별도로 처방 기록 저장 및 관리
+- **빠른 처방 기록**: 단계별 워크플로우로 처방전 즉시 등록
+  - 1단계: 처방전/조제기록 사진 업로드
+  - 2단계: AI OCR 결과 검토 (약물명, 용량, 신뢰도 점수, 처방일/조제일)
+  - 3단계: 병원명, 증상, 진단명 입력 (처방일 자동 입력)
 - **증상별 과거 기록 조회**: 같은 증상으로 과거 진료 받은 기록 확인 및 약물 통계
 - **알림 시스템**: 복약 알림, 재진료 알림, 의료진 조회 알림 설정 및 관리
-- **약물 분석**: OCR 신뢰도 분포, 검증 필요 항목 자동 표시
+- **약물 분석**: OCR 신뢰도 분포, 검증 필요 항목 자동 표시 (80% 미만 신뢰도 강조)
 
 ## 기술 스택
 - **프론트엔드**: React, TypeScript, Tailwind CSS, Shadcn UI
@@ -74,6 +78,8 @@ MedBridge는 환자가 이전 진료 정보를 새로운 의료기관의 의료�
 ### 환자/처방 관리
 - `GET /api/patient` - 현재 환자 조회/생성 (인증 필요)
 - `POST /api/prescriptions/import` - 처방전 업로드 및 OCR (인증 필요)
+- `POST /api/prescriptions/ocr-preview` - OCR 미리보기 (저장 없이 추출만, 인증 필요)
+- `POST /api/prescriptions/quick-upload` - 빠른 처방 기록 (단계별 워크플로우용, 인증 필요)
 - `GET /api/prescriptions` - 처방 기록 조회 (인증 필요)
 - `GET /api/prescriptions-with-meds` - 처방 + 약물 정보 조회 (인증 필요)
 - `GET /api/symptom-history/:chiefComplaint` - 증상별 과거 기록 (인증 필요)
@@ -101,8 +107,8 @@ MedBridge는 환자가 이전 진료 정보를 새로운 의료기관의 의료�
 
 ### 환자 중심 구조
 - **patients**: 환자 정보 (userId로 식별)
-- **prescriptions**: 처방 기록 (patientId, chiefComplaint 연결)
-- **prescriptionMedications**: 처방별 약물 정보
+- **prescriptions**: 처방 기록 (patientId, chiefComplaint, doctorDiagnosis 연결)
+- **prescriptionMedications**: 처방별 약물 정보 (신뢰도, 검증 필요 여부 포함)
 
 ### 접수 관련
 - **hospitals**: 병원/의원 정보
