@@ -814,20 +814,23 @@ export async function registerRoutes(
   });
 
   // 빠른 처방 기록 API (접수 없이 직접 처방전 업로드)
+  // upload.single을 optional로 처리
   app.post("/api/prescriptions/quick-upload", isAuthenticated, upload.single("documents"), async (req: any, res: Response) => {
     try {
       const userId = req.user.claims.sub;
       const patient = await storage.getOrCreatePatient(userId);
-      const file = req.file as Express.Multer.File;
-
-      if (!file) {
-        return res.status(400).json({ error: "파일을 선택해주세요" });
-      }
-
+      const file = req.file as Express.Multer.File | undefined;
       const { hospitalName, chiefComplaint, doctorDiagnosis, prescriptionDate, dispensingDate, medications, rawOcrText } = req.body;
 
       // medications가 JSON 문자열로 오면 파싱
-      let parsedMedications = [];
+      let parsedMedications: Array<{
+        medicationName: string;
+        dose?: string | null;
+        frequency?: string | null;
+        duration?: string | null;
+        confidence?: number;
+        needsVerification?: boolean;
+      }> = [];
       if (medications) {
         try {
           parsedMedications = typeof medications === 'string' ? JSON.parse(medications) : medications;
@@ -836,10 +839,19 @@ export async function registerRoutes(
         }
       }
 
-      // 파일이 있으면 OCR 실행, 없으면 전달받은 medications 사용
-      let ocrResult = { medications: parsedMedications, rawText: rawOcrText || "" };
+      // 파일이 있으면 OCR 실행
+      let finalMedications = parsedMedications;
+      let finalRawText = rawOcrText || "";
+      
       if (file) {
-        ocrResult = await extractMedicationsFromImage(file.buffer, file.mimetype);
+        const ocrResult = await extractMedicationsFromImage(file.buffer, file.mimetype);
+        finalMedications = ocrResult.medications;
+        finalRawText = ocrResult.rawText;
+      }
+
+      // 약물 데이터가 없으면 에러
+      if (finalMedications.length === 0) {
+        return res.status(400).json({ error: "약물 데이터가 필요합니다" });
       }
 
       const prescription = await storage.createPrescription({
@@ -847,20 +859,20 @@ export async function registerRoutes(
         chiefComplaint: chiefComplaint || null,
         doctorDiagnosis: doctorDiagnosis || null,
         hospitalName: hospitalName || null,
-        prescriptionDate: prescriptionDate || ocrResult.medications[0]?.prescriptionDate || null,
-        dispensingDate: dispensingDate || ocrResult.medications[0]?.dispensingDate || null,
-        rawOcrText: ocrResult.rawText,
+        prescriptionDate: prescriptionDate || null,
+        dispensingDate: dispensingDate || null,
+        rawOcrText: finalRawText,
       });
 
-      for (const med of ocrResult.medications) {
+      for (const med of finalMedications) {
         await storage.createPrescriptionMedication({
           prescriptionId: prescription.id,
-          medicationName: med.medicationName,
-          dose: med.dose,
-          frequency: med.frequency,
-          duration: med.duration,
-          confidence: med.confidence,
-          needsVerification: med.confidence < 80,
+          medicationName: med.medicationName || "알 수 없는 약물",
+          dose: med.dose || null,
+          frequency: med.frequency || null,
+          duration: med.duration || null,
+          confidence: med.confidence ?? 80,
+          needsVerification: (med.confidence ?? 80) < 80,
           ingredients: null,
           indication: null,
           dosesPerDay: null,
@@ -870,7 +882,7 @@ export async function registerRoutes(
 
       res.json({ 
         prescription, 
-        medicationCount: ocrResult.medications.length 
+        medicationCount: finalMedications.length 
       });
     } catch (error) {
       console.error("Failed to quick upload prescription:", error);
