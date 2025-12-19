@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Shield, FileText, Users, Trash2, Clock, Eye } from "lucide-react";
 
 interface ConsentDialogProps {
@@ -48,8 +47,8 @@ export function ConsentDialog({ open, onAccept, onDecline }: ConsentDialogProps)
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 pr-4">
-          <div className="space-y-6 py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto pr-2">
+          <div className="space-y-6 py-4 pr-2">
             <div className="space-y-3">
               <div className="flex items-start gap-3">
                 <FileText className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
@@ -149,7 +148,7 @@ export function ConsentDialog({ open, onAccept, onDecline }: ConsentDialogProps)
               </ul>
             </div>
           </div>
-        </ScrollArea>
+        </div>
 
         <DialogFooter className="flex-shrink-0 gap-2 sm:gap-0 pt-4 border-t">
           <Button
