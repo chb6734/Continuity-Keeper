@@ -57,6 +57,7 @@ export const prescriptions = pgTable("prescriptions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   patientId: varchar("patient_id").notNull(),
   chiefComplaint: text("chief_complaint"), // 어떤 증상으로 처방받았는지
+  doctorDiagnosis: text("doctor_diagnosis"), // 의사가 진단한 내용
   hospitalName: text("hospital_name"),
   prescriptionDate: text("prescription_date"),
   dispensingDate: text("dispensing_date"),
