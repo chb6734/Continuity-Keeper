@@ -780,6 +780,39 @@ export async function registerRoutes(
     }
   });
 
+  // OCR 미리보기 API (저장 없이 추출만)
+  app.post("/api/prescriptions/ocr-preview", isAuthenticated, upload.single("documents"), async (req: any, res: Response) => {
+    try {
+      const file = req.file as Express.Multer.File;
+      if (!file) {
+        return res.status(400).json({ error: "파일을 선택해주세요" });
+      }
+
+      const ocrResult = await extractMedicationsFromImage(file.buffer, file.mimetype);
+      
+      // 처방일 추출 (약물 정보에서)
+      const extractedPrescriptionDate = ocrResult.medications[0]?.prescriptionDate || null;
+      const extractedDispensingDate = ocrResult.medications[0]?.dispensingDate || null;
+
+      res.json({
+        medications: ocrResult.medications.map(med => ({
+          medicationName: med.medicationName,
+          dose: med.dose,
+          frequency: med.frequency,
+          duration: med.duration,
+          confidence: med.confidence,
+          needsVerification: med.confidence < 80,
+        })),
+        prescriptionDate: extractedPrescriptionDate,
+        dispensingDate: extractedDispensingDate,
+        rawText: ocrResult.rawText,
+      });
+    } catch (error) {
+      console.error("OCR preview failed:", error);
+      res.status(500).json({ error: "이미지 분석에 실패했습니다" });
+    }
+  });
+
   // 빠른 처방 기록 API (접수 없이 직접 처방전 업로드)
   app.post("/api/prescriptions/quick-upload", isAuthenticated, upload.single("documents"), async (req: any, res: Response) => {
     try {
@@ -791,16 +824,31 @@ export async function registerRoutes(
         return res.status(400).json({ error: "파일을 선택해주세요" });
       }
 
-      const { hospitalName, chiefComplaint, prescriptionDate } = req.body;
+      const { hospitalName, chiefComplaint, doctorDiagnosis, prescriptionDate, dispensingDate, medications, rawOcrText } = req.body;
 
-      const ocrResult = await extractMedicationsFromImage(file.buffer, file.mimetype);
+      // medications가 JSON 문자열로 오면 파싱
+      let parsedMedications = [];
+      if (medications) {
+        try {
+          parsedMedications = typeof medications === 'string' ? JSON.parse(medications) : medications;
+        } catch (e) {
+          console.error("Failed to parse medications:", e);
+        }
+      }
+
+      // 파일이 있으면 OCR 실행, 없으면 전달받은 medications 사용
+      let ocrResult = { medications: parsedMedications, rawText: rawOcrText || "" };
+      if (file) {
+        ocrResult = await extractMedicationsFromImage(file.buffer, file.mimetype);
+      }
 
       const prescription = await storage.createPrescription({
         patientId: patient.id,
         chiefComplaint: chiefComplaint || null,
+        doctorDiagnosis: doctorDiagnosis || null,
         hospitalName: hospitalName || null,
         prescriptionDate: prescriptionDate || ocrResult.medications[0]?.prescriptionDate || null,
-        dispensingDate: ocrResult.medications[0]?.dispensingDate || null,
+        dispensingDate: dispensingDate || ocrResult.medications[0]?.dispensingDate || null,
         rawOcrText: ocrResult.rawText,
       });
 
