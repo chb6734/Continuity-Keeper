@@ -37,8 +37,8 @@ export function ConsentDialog({ open, onAccept, onDecline }: ConsentDialogProps)
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onDecline()}>
-      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-primary" />
             개인정보 수집 및 이용 동의
@@ -48,7 +48,7 @@ export function ConsentDialog({ open, onAccept, onDecline }: ConsentDialogProps)
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4 max-h-[50vh]">
+        <ScrollArea className="flex-1 min-h-0 pr-4">
           <div className="space-y-6 py-4">
             <div className="space-y-3">
               <div className="flex items-start gap-3">
@@ -151,7 +151,7 @@ export function ConsentDialog({ open, onAccept, onDecline }: ConsentDialogProps)
           </div>
         </ScrollArea>
 
-        <DialogFooter className="gap-2 sm:gap-0 pt-4 border-t">
+        <DialogFooter className="flex-shrink-0 gap-2 sm:gap-0 pt-4 border-t">
           <Button
             variant="outline"
             onClick={onDecline}
